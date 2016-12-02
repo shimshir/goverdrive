@@ -1,0 +1,5 @@
+.gradle/
+goverdrive-client/build/
+goverdrive-core/build/
+goverdrive-daemon/build/
+
