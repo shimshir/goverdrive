@@ -1,0 +1,5 @@
+rootProject.name = 'goverdrive'
+
+include 'goverdrive-client', 'goverdrive-daemon'
+include 'goverdrive-core'
+

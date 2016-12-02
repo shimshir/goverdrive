@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <bytecodeTargetLevel>
+      <module name="goverdrive-client_main" target="1.8" />
+      <module name="goverdrive-client_test" target="1.8" />
+      <module name="goverdrive-core_main" target="1.8" />
+      <module name="goverdrive-core_test" target="1.8" />
+      <module name="goverdrive-daemon_main" target="1.8" />
+      <module name="goverdrive-daemon_test" target="1.8" />
+    </bytecodeTargetLevel>
+  </component>
+</project>
