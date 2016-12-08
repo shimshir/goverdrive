@@ -7,7 +7,7 @@ public class Main {
     private static final GoverdriveService gds = new GoverdriveServiceImpl();
 
     public static void main(String[] args) {
-        gds.getFilePath("/test_folder/inner_folder1/inner_folder2");
-        gds.getFilePath("/");
+		 Object result = gds.createFile("/home/amemic/projects/goverdrive/goverdrive-core/src/main/java/de/admir/goverdrive/core/GoverdriveServiceImpl.java", "/GoverdriveServiceImpl.java");
+		 System.out.println(result);
     }
 }

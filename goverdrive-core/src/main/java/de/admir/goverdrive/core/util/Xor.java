@@ -37,6 +37,8 @@ public abstract class Xor<L, R> {
 
     public abstract <U> Xor<L, U> flatMapRight(Function<R, Xor<L, U>> transformRight);
 
+    public abstract <T> Xor<T, R> flatMapLeft(Function<L, Xor<T, R>> transformLeft);
+
     public <U> Xor<L, U> mapRight(Function<R, U> transformRight) {
         return this.map(left -> left, transformRight);
     }
@@ -65,7 +67,7 @@ public abstract class Xor<L, R> {
         }
 
         public L getLeft() {
-            return this.leftValue;
+            return leftValue;
         }
 
         public R getRight() {
@@ -95,8 +97,13 @@ public abstract class Xor<L, R> {
         }
 
         @Override
+        public <T> Xor<T, R> flatMapLeft(Function<L, Xor<T, R>> transformLeft) {
+            return transformLeft.apply(leftValue);
+        }
+
+        @Override
         public <U> Xor<L, U> flatMapRight(Function<R, Xor<L, U>> transformRight) {
-            return Xor.left(this.leftValue);
+            return Xor.left(leftValue);
         }
     }
 
@@ -137,8 +144,13 @@ public abstract class Xor<L, R> {
         }
 
         @Override
+        public <T> Xor<T, R> flatMapLeft(Function<L, Xor<T, R>> transformLeft) {
+            return Xor.right(rightValue);
+        }
+
+        @Override
         public <U> Xor<L, U> flatMapRight(Function<R, Xor<L, U>> transformRight) {
-            return transformRight.apply(this.rightValue);
+            return transformRight.apply(rightValue);
         }
     }
 }
