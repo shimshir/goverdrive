@@ -1,16 +1,29 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'com.github.johnrengelman.shadow' version '1.2.3'
+}
+
 group 'de.admir.goverdrive'
 version '1.0-SNAPSHOT'
 
-apply plugin: 'java'
-
-sourceCompatibility = 1.8
-targetCompatibility = 1.8
-version = '1.0'
-
 repositories {
-    mavenCentral()
+    jcenter()
 }
 
+sourceCompatibility = '1.8'
+
 dependencies {
+    compile project(':goverdrive-core')
+
     testCompile group: 'junit', name: 'junit', version: '4.12'
+}
+
+mainClassName = 'de.admir.goverdrive.client.DaemonMain'
+
+shadowJar {
+    classifier = 'fat'
+    mergeServiceFiles {
+        include 'META-INF/services/io.vertx.core.spi.VerticleFactory'
+    }
 }

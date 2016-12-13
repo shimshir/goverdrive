@@ -1,2 +1,6 @@
 group 'de.admir.goverdrive'
 version '1.0-SNAPSHOT'
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '3.2.1'
+}
