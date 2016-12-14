@@ -14,6 +14,7 @@ public class SystemUtils {
 			} catch (Exception ee) {
 				ee.printStackTrace();
 			}
+			System.err.println("Fatal error, exiting application");
 			System.exit(1);
 			// Unnecessary, but the compiler requires it
 			return null;
