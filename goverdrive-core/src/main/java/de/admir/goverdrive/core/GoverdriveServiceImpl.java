@@ -24,7 +24,6 @@ import de.admir.goverdrive.core.util.Xor;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;

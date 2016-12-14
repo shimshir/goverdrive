@@ -1,25 +1,29 @@
 package de.admir.goverdrive.daemon;
 
-import de.admir.goverdrive.core.config.VertxConfig;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
-import io.vertx.core.Vertx;
-import io.vertx.core.eventbus.Message;
+import java.io.File;
+import java.sql.*;
 
 public class DaemonMain {
-    public static void main(String[] args) {
-        Vertx.clusteredVertx(VertxConfig.OPTIONS, res -> {
-            if (res.succeeded()) {
-                System.out.println("The daemon has the clustered eventBus");
 
-                Vertx vertx = res.result();
-                vertx.eventBus().consumer("goverdrive.daemon.test", (Message<Integer> message) -> {
-                    System.out.println(message.body());
-                    message.reply("response: " + message.body());
-                });
+    private static final Config CONFIG = ConfigFactory.load();
 
-            } else {
-                System.out.println("Daemon failed to obtain eventBus: " + res.cause());
-            }
-        });
+    private static final String DB_FOLDER = CONFIG.getString("goverdrive.db.folder");
+    private static final String DB_URL = CONFIG.getString("goverdrive.db.url");
+
+    public static void main(String args[]) {
+        File dbFile = new File(DB_FOLDER);
+        if (!dbFile.exists() && !dbFile.mkdirs()) {
+            System.exit(1);
+        }
+
+        try (Connection connection = DriverManager.getConnection(DB_URL); Statement stmt = connection.createStatement()) {
+            System.out.println("Opened database successfully");
+        } catch (Exception e) {
+            System.err.println(e.getClass().getName() + ": " + e.getMessage());
+            System.exit(1);
+        }
     }
 }
