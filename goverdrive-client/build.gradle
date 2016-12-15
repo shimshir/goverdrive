@@ -17,3 +17,13 @@ dependencies {
 }
 
 mainClassName = "de.admir.goverdrive.client.ClientMain"
+
+task fatJar(type: Jar) {
+    baseName = project.name + '-all'
+    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+    manifest {
+        attributes 'Implementation-Title': project.name, 'Implementation-Version': version
+        attributes 'Main-Class': project.mainClassName
+    }
+}
