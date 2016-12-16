@@ -12,8 +12,6 @@ repositories {
 
 dependencies {
     compile project(':goverdrive-core')
-
-    compile 'org.scala-lang:scala-library:2.12.1'
 }
 
 mainClassName = "de.admir.goverdrive.client.ClientMain"
