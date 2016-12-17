@@ -1,13 +1,12 @@
 package de.admir.goverdrive.client
 
-import com.typesafe.scalalogging.Logger
+import com.typesafe.scalalogging.StrictLogging
 import de.admir.goverdrive.scala.core.db.GoverdriveDb
 import de.admir.goverdrive.scala.core.model.FileMapping
 
 import scala.util.{Failure, Success, Try}
 
-object ClientMain extends App {
-    val logger = Logger[this.type]
+object ClientMain extends App with StrictLogging {
 
     Try(("A", "B")) match {
         case Success((localPath, remotePath)) =>

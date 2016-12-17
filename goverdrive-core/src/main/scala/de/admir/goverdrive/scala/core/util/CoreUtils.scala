@@ -1,6 +1,5 @@
 package de.admir.goverdrive.scala.core.util
 
-
 import scala.util.{Failure, Success, Try}
 
 object CoreUtils {
