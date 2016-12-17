@@ -31,8 +31,6 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MarkerFactory;
@@ -86,7 +84,7 @@ public class GoverdriveServiceImpl implements GoverdriveService {
 
                 Xor<DriveError, File> xorRemoteFolder = filePath.size() == 0 ?
                     Xor.left(new DriveError("You must provide at least a file name", DriveErrorType.ILLEGAL_ARGUMENTS)) :
-                    createFolderWithIntermediate(StringUtils.join(filePath.subList(0, filePath.size() - 1), '/'));
+                    createFolderWithIntermediate(SystemUtils.joinStrings(filePath.subList(0, filePath.size() - 1), "/"));
 
                 return xorRemoteFolder.flatMapRight(
                     folder -> createAuthorizedDriveService()
@@ -201,7 +199,8 @@ public class GoverdriveServiceImpl implements GoverdriveService {
             return getRootFolder().flatMapRight(rootFolder -> createFolder(new File().setName(folderName), rootFolder));
         } else {
             String folderName = folderPathList.get(folderPathList.size() - 1);
-            return findFile('/' + StringUtils.join(folderPathList.subList(0, folderPathList.size() - 1), '/'))
+            String joinedPath = SystemUtils.joinStrings(folderPathList.subList(0, folderPathList.size() - 1), "/", "/");
+            return findFile(joinedPath)
                 .flatMapRight(parent -> createFolder(new File().setName(folderName), parent));
         }
     }
@@ -211,7 +210,7 @@ public class GoverdriveServiceImpl implements GoverdriveService {
      */
     private Xor<DriveError, File> createFolderWithIntermediate(String remotePath) {
         List<String> pathListToFolder = Arrays.asList(remotePath.split("/"));
-        if (CollectionUtils.isEmpty(pathListToFolder))
+        if (SystemUtils.isEmptyCollection(pathListToFolder))
             return getRootFolder();
 
         String pathToVisit = "/";
