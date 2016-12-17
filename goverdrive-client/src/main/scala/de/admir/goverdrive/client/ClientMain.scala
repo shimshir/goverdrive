@@ -1,15 +1,15 @@
 package de.admir.goverdrive.client
 
 import com.typesafe.scalalogging.Logger
-import de.admir.goverdrive.core.db.GoverdriveDb
-import de.admir.goverdrive.core.model.FileMapping
+import de.admir.goverdrive.scala.core.db.GoverdriveDb
+import de.admir.goverdrive.scala.core.model.FileMapping
 
 import scala.util.{Failure, Success, Try}
 
 object ClientMain extends App {
     val logger = Logger[this.type]
 
-    Try((args(0), args(1))) match {
+    Try(("A", "B")) match {
         case Success((localPath, remotePath)) =>
             GoverdriveDb.insertFileMappingSync(FileMapping(None, None, localPath, remotePath)) match {
                 case Right(fileMapping) => logger.info(s"Successfully added file mapping: $fileMapping")
@@ -17,4 +17,6 @@ object ClientMain extends App {
             }
         case Failure(t) => logger.error("Error while parsing input", t)
     }
+
+    //GoverdriveDb.tearDownDb()
 }
