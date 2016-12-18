@@ -5,24 +5,25 @@ import java.util.List;
 
 import lombok.ToString;
 
+
 @ToString
-abstract class BaseError<E extends BaseError> implements CoreError {
+public abstract class BaseError<E extends BaseError> implements CoreError {
     private String message;
     private List<CoreError> nestedErrors;
 
-    BaseError() {
+    protected BaseError() {
     }
 
-    BaseError(String message, List<CoreError> nestedErrors) {
+    protected BaseError(String message, List<CoreError> nestedErrors) {
         this.message = message;
         this.nestedErrors = nestedErrors;
     }
 
-    BaseError(Exception e) {
+    protected BaseError(Throwable e) {
         this.message = e.toString();
     }
 
-    BaseError(String message) {
+    protected BaseError(String message) {
         this.message = message;
     }
 

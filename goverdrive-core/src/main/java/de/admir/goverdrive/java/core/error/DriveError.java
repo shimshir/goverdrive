@@ -2,6 +2,10 @@ package de.admir.goverdrive.java.core.error;
 
 import java.util.List;
 
+import lombok.ToString;
+
+
+@ToString(callSuper = true)
 public class DriveError extends BaseError<DriveError> {
     private DriveErrorType type = DriveErrorType.UNKNOWN;
 
@@ -14,11 +18,11 @@ public class DriveError extends BaseError<DriveError> {
         this.type = type;
     }
 
-    public DriveError(Exception e) {
+    public DriveError(Throwable e) {
         super(e);
     }
 
-    public DriveError(Exception e, DriveErrorType type) {
+    public DriveError(Throwable e, DriveErrorType type) {
         super(e);
         this.type = type;
     }
@@ -37,6 +41,6 @@ public class DriveError extends BaseError<DriveError> {
     }
 
     public enum DriveErrorType {
-        UNKNOWN, NESTED, FOLDER_NOT_FOUND, DUPLICATE_FOLDER, INVALID_PARENT, ILLEGAL_ARGUMENTS
+        UNKNOWN, NESTED, FOLDER_NOT_FOUND, DUPLICATE_FOLDER, DUPLICATE_FILE, INVALID_PARENT, ILLEGAL_ARGUMENTS
     }
 }

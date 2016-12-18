@@ -81,7 +81,7 @@ public class GoverdriveServiceImpl implements GoverdriveService {
         logger.debug(String.format("Attempting to create file, localPath: %s, remotePath: %s", localPath, remotePath));
 
         if (getFile(remotePath).isRight())
-            return Xor.left(new DriveError("File already exists, remotePath: " + remotePath));
+            return Xor.left(new DriveError("File already exists, remotePath: " + remotePath, DriveErrorType.DUPLICATE_FILE));
 
         final java.io.File localFile = new java.io.File(localPath);
         Xor<IOError, FileContent> xorFileContent = loadFileContent(localFile);

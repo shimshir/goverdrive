@@ -3,6 +3,7 @@ package de.admir.goverdrive.daemon
 import java.sql.Timestamp
 
 import com.typesafe.scalalogging.StrictLogging
+import de.admir.goverdrive.daemon.error.DaemonError
 import de.admir.goverdrive.scala.core.db.GoverdriveDb
 import de.admir.goverdrive.scala.core.model.FileMapping
 import de.admir.goverdrive.scala.core.{GoverdriveServiceWrapper => GoverdriveService}
@@ -14,26 +15,40 @@ import scala.language.postfixOps
 
 
 object DaemonMain extends App with StrictLogging {
-    val workFuture: Future[Seq[String Either FileMapping]] = GoverdriveDb.getFileMappingsFuture
+    val workFuture: Future[Seq[DaemonError Either FileMapping]] = GoverdriveDb.getFileMappingsFuture
         .map(_.filter(_.fileId.isEmpty))
-        .flatMap(fileMappings => {
-            Future.sequence {
-                fileMappings.map { fileMapping =>
-                    GoverdriveService.createFile(fileMapping.localPath, fileMapping.remotePath) match {
-                        case Right(driveFile) =>
-                            GoverdriveDb.updateFileMappingFuture(
-                                fileMapping.copy(
-                                    fileId = Some(driveFile.getId),
-                                    syncedAt = Some(new Timestamp(driveFile.getModifiedTime.getValue))
-                                )
-                            ).map(_.toRight(s"Could not update fileMapping: $fileMapping, in the DB"))
-                        case Left(err) =>
-                            logger.error(err.toString)
-                            Future.successful(Left(err.toString))
+        .flatMap {
+            case Seq() =>
+                val infoMessage = "No fileMappings without fileId in DB"
+                logger.info(infoMessage)
+                Future.successful(Seq(Left(DaemonError(infoMessage))))
+            case fileMappings =>
+                Future.sequence {
+                    fileMappings.map { fileMapping =>
+                        GoverdriveService.createFile(fileMapping.localPath, fileMapping.remotePath) match {
+                            case Right(driveFile) =>
+                                GoverdriveDb.updateFileMappingFuture(
+                                    fileMapping.copy(
+                                        fileId = Some(driveFile.getId),
+                                        syncedAt = Some(new Timestamp(driveFile.getModifiedTime.getValue))
+                                    )
+                                ).map {
+                                    case Some(updatedFileMapping) =>
+                                        val successMessage = s"Successfully synced and updated fileMapping: $updatedFileMapping"
+                                        logger.info(successMessage)
+                                        Right(updatedFileMapping)
+                                    case _ =>
+                                        val errorMessage = s"Could sync but not update fileMapping: $fileMapping"
+                                        logger.error(errorMessage)
+                                        Left(DaemonError(errorMessage))
+                                }
+                            case Left(error) =>
+                                logger.error(error.toString)
+                                Future.successful(Left(DaemonError(s"Error while syncing file to remote, fileMapping: $fileMapping", error)))
+                        }
                     }
                 }
-            }
-        })
-    val result = Await.result(workFuture, 15 minutes)
-    logger.info(result.toString)
+        }
+
+    Await.result(workFuture, 1 minute)
 }
