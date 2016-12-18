@@ -20,7 +20,7 @@ object GoverdriveServiceWrapper {
 
     def getAllFilesAndFolders[T]: DriveError Either Seq[File] = gs.getAllFilesAndFolders
 
-    def findFile(remotePath: String): DriveError Either File = gs.findFile(remotePath)
+    def findFile(remotePath: String): DriveError Either File = gs.getFile(remotePath)
 
     def getFilePathList(remotePath: String): DriveError Either Seq[File] = gs.getFilePathList(remotePath)
 

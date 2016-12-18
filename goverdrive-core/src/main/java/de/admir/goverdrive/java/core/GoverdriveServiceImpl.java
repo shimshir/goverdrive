@@ -37,9 +37,10 @@ import org.slf4j.MarkerFactory;
 
 import static de.admir.goverdrive.java.core.error.DriveError.*;
 
+
 public class GoverdriveServiceImpl implements GoverdriveService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(GoverdriveServiceImpl.class);
+    private static final Logger logger = LoggerFactory.getLogger(GoverdriveServiceImpl.class);
 
     private static final java.io.File DATA_STORE_DIR = new java.io.File(CoreConfig.CONFIG.getString("goverdrive.credentials.url"));
 
@@ -48,18 +49,20 @@ public class GoverdriveServiceImpl implements GoverdriveService {
     private static final List<String> SCOPES = Collections.singletonList(DriveScopes.DRIVE);
 
     private static final HttpTransport HTTP_TRANSPORT = SystemUtils
-        .handleFatal(GoogleNetHttpTransport::newTrustedTransport, e -> LOG.error(MarkerFactory.getMarker("FATAL"), "Could not instantiate HTTP_TRANSPORT", e));
+        .handleFatal(GoogleNetHttpTransport::newTrustedTransport, e -> logger.error(MarkerFactory.getMarker("FATAL"), "Could not instantiate HTTP_TRANSPORT", e));
 
     private static final FileDataStoreFactory DATA_STORE_FACTORY = SystemUtils
-        .handleFatal(() -> new FileDataStoreFactory(DATA_STORE_DIR), e -> LOG.error(MarkerFactory.getMarker("FATAL"), "Could not instantiate DATA_STORE_FACTORY", e));
+        .handleFatal(() -> new FileDataStoreFactory(DATA_STORE_DIR), e -> logger.error(MarkerFactory.getMarker("FATAL"), "Could not instantiate DATA_STORE_FACTORY", e));
 
     private static final GoogleClientSecrets CLIENT_SECRETS = SystemUtils
         .handleFatal(() -> GoogleClientSecrets.load(JSON_FACTORY, new InputStreamReader(GoverdriveServiceImpl.class.getResourceAsStream("/client_creds.json"))),
-            e -> LOG.error(MarkerFactory.getMarker("FATAL"), "Could not instantiate CLIENT_SECRETS", e));
+            e -> logger.error(MarkerFactory.getMarker("FATAL"), "Could not instantiate CLIENT_SECRETS", e));
+
+    private static final String FILE_FIELDS = "id, kind, mimeType, name, parents, modifiedTime";
 
     @Override
     public Xor<DriveError, ByteArrayOutputStream> getFileStream(String path) {
-        return findFile(path)
+        return getFile(path)
             .mapRight(File::getId)
             .flatMapRight(fileId ->
                 createAuthorizedDriveService()
@@ -75,8 +78,13 @@ public class GoverdriveServiceImpl implements GoverdriveService {
 
     @Override
     public Xor<DriveError, File> createFile(String localPath, String remotePath) {
+        logger.debug(String.format("Attempting to create file, localPath: %s, remotePath: %s", localPath, remotePath));
+
+        if (getFile(remotePath).isRight())
+            return Xor.left(new DriveError("File already exists, remotePath: " + remotePath));
+
         final java.io.File localFile = new java.io.File(localPath);
-        Xor<IOError, FileContent> xorFileContent = getFileContent(localFile);
+        Xor<IOError, FileContent> xorFileContent = loadFileContent(localFile);
         return xorFileContent
             .mapLeft(ioError -> new DriveError("Error while retrieving file content", DriveErrorType.NESTED).addNestedError(ioError)).flatMapRight(fileContent -> {
 
@@ -93,7 +101,7 @@ public class GoverdriveServiceImpl implements GoverdriveService {
                             File fileMetadata = new File();
                             fileMetadata.setName(Paths.get(remotePath).getFileName().toString());
                             fileMetadata.setParents(Collections.singletonList(folder.getId()));
-                            return driveService.files().create(fileMetadata, fileContent).setFields("id, kind, mimeType, name, parents").execute();
+                            return driveService.files().create(fileMetadata, fileContent).setFields(FILE_FIELDS).execute();
                         }).mapLeft(e -> new DriveError("Error while creating file", DriveErrorType.NESTED).addNestedError(new IOError(e))).mapRight(file -> {
                             updateFilesAndFoldersCache(file);
                             return file;
@@ -123,7 +131,7 @@ public class GoverdriveServiceImpl implements GoverdriveService {
         } else {
             return createAuthorizedDriveService()
                 .mapLeft(authError -> new DriveError("Error while creating authorized drive service", DriveErrorType.NESTED).addNestedError(authError)).flatMapRight(
-                    driveService -> Xor.catchNonFatal(() -> driveService.files().list().setFields("files (id, kind, mimeType, name, parents)").execute().getFiles()).mapLeft(DriveError::new))
+                    driveService -> Xor.catchNonFatal(() -> driveService.files().list().setFields(String.format("files (%s)", FILE_FIELDS)).execute().getFiles()).mapLeft(DriveError::new))
                 .flatMapRight(files -> getRootFolder().mapRight(rootFolder -> addFirst(rootFolder, files))).mapRight(files -> {
                     CacheService.updateAllFilesAndFolders(files);
                     return files;
@@ -132,7 +140,7 @@ public class GoverdriveServiceImpl implements GoverdriveService {
     }
 
     @Override
-    public Xor<DriveError, File> findFile(String remotePath) {
+    public Xor<DriveError, File> getFile(String remotePath) {
         return getFilePathList(remotePath).mapRight(files -> files.get(files.size() - 1));
     }
 
@@ -159,7 +167,7 @@ public class GoverdriveServiceImpl implements GoverdriveService {
             for (int candidatesIndex = candidatesList.size() - 1; candidatesIndex > 0; candidatesIndex--) {
                 List<File> files = candidatesList.get(candidatesIndex);
                 List<File> possibleParents = candidatesList.get(candidatesIndex - 1);
-                Xor<DriveError, File> xorConjunctFile = getConjunctFile(files, possibleParents);
+                Xor<DriveError, File> xorConjunctFile = findConjunctFile(files, possibleParents);
                 if (xorConjunctFile.isLeft()) {
                     return Xor.left(xorConjunctFile.getLeft());
                 } else {
@@ -200,7 +208,7 @@ public class GoverdriveServiceImpl implements GoverdriveService {
         } else {
             String folderName = folderPathList.get(folderPathList.size() - 1);
             String joinedPath = SystemUtils.joinStrings(folderPathList.subList(0, folderPathList.size() - 1), "/", "/");
-            return findFile(joinedPath)
+            return getFile(joinedPath)
                 .flatMapRight(parent -> createFolder(new File().setName(folderName), parent));
         }
     }
@@ -260,11 +268,11 @@ public class GoverdriveServiceImpl implements GoverdriveService {
         if (cachedCredentials != null) {
             return Xor.right(cachedCredentials);
         } else {
-            LOG.debug("Attempting to authorize");
+            logger.debug("Attempting to authorize");
             return createAuthorizationFlow().mapLeft(ioError -> new AuthorizationError("Error while attempting to authorize").addNestedError(ioError))
                 .flatMapRight(flow -> Xor.catchNonFatal(() -> new AuthorizationCodeInstalledApp(flow, new LocalServerReceiver()).authorize("user")).mapLeft(AuthorizationError::new))
                 .mapRight(credential -> {
-                    LOG.debug("Credentials saved to " + DATA_STORE_DIR.getAbsolutePath());
+                    logger.debug("Credentials saved to " + DATA_STORE_DIR.getAbsolutePath());
                     CacheService.updateCredentials(credential);
                     return credential;
                 });
@@ -275,7 +283,7 @@ public class GoverdriveServiceImpl implements GoverdriveService {
         return authorize().mapRight(credential -> new Drive.Builder(HTTP_TRANSPORT, JSON_FACTORY, credential).setApplicationName(CoreConfig.CONFIG.getString("goverdrive.name")).build());
     }
 
-    private static Xor<DriveError, File> getConjunctFile(List<File> files, List<File> parents) {
+    private static Xor<DriveError, File> findConjunctFile(List<File> files, List<File> parents) {
         Optional<File> conjunctFile = Optional.empty();
         for (File file : files) {
             for (File parent : parents) {
@@ -309,7 +317,7 @@ public class GoverdriveServiceImpl implements GoverdriveService {
         return pathList;
     }
 
-    private static Xor<IOError, FileContent> getFileContent(java.io.File localFile) {
+    private static Xor<IOError, FileContent> loadFileContent(java.io.File localFile) {
         return Xor.catchNonFatal(() -> new FileContent(Files.probeContentType(localFile.toPath()), localFile)).mapLeft(IOError::new);
     }
 }

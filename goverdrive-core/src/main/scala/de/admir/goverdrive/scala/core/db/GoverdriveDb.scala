@@ -15,6 +15,7 @@ import slick.lifted.TableQuery
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
+
 object GoverdriveDb {
     private val timeout = 30.seconds
     private val dbFile = new File(CoreConfig.getDbFilePath)
@@ -43,19 +44,27 @@ object GoverdriveDb {
 
     def tableNamesFuture: Future[Vector[String]] = db.run(MTable.getTables).map(_.map(_.name.name))
 
-    def insertFileMapping(fileMapping: FileMapping): Future[FileMapping] = {
+    def updateFileMappingFuture(fileMapping: FileMapping): Future[Option[FileMapping]] = {
+        val updateAction = fileMappings.filter(_.pk === fileMapping.pk) update fileMapping
+        db.run(updateAction).map {
+            case 0 => None
+            case _ => Some(fileMapping)
+        }
+    }
+
+    def insertFileMappingFuture(fileMapping: FileMapping): Future[FileMapping] = {
         val insertAction = (fileMappings returning fileMappings.map(_.pk)) += fileMapping
         db.run(insertAction).map(pk => fileMapping.copy(pk = pk))
     }
 
-    def insertFileMappingSync(fileMapping: FileMapping): Throwable Either FileMapping = catchNonFatal {
-        Await.result(insertFileMapping(fileMapping), timeout)
+    def insertFileMapping(fileMapping: FileMapping): Throwable Either FileMapping = catchNonFatal {
+        Await.result(insertFileMappingFuture(fileMapping), timeout)
     }
 
-    def getFileMappings: Future[Seq[FileMapping]] = db.run(fileMappings.result)
+    def getFileMappingsFuture: Future[Seq[FileMapping]] = db.run(fileMappings.result)
 
-    def getFileMappingsSync: Throwable Either Seq[FileMapping] = catchNonFatal {
-        Await.result(getFileMappings, timeout)
+    def getFileMappings: Throwable Either Seq[FileMapping] = catchNonFatal {
+        Await.result(getFileMappingsFuture, timeout)
     }
 
     private def initDb(): Unit = {

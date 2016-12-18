@@ -8,6 +8,7 @@ import de.admir.goverdrive.java.core.util.Xor;
 import java.io.ByteArrayOutputStream;
 import java.util.List;
 
+
 public interface GoverdriveService {
 
    Xor<DriveError, ByteArrayOutputStream> getFileStream(String path);
@@ -18,7 +19,7 @@ public interface GoverdriveService {
 
    Xor<DriveError, List<File>> getAllFilesAndFolders();
 
-   Xor<DriveError, File> findFile(String remotePath);
+   Xor<DriveError, File> getFile(String remotePath);
 
    Xor<DriveError, List<File>> getFilePathList(String remotePath);
 
