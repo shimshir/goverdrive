@@ -1,5 +1,5 @@
 plugins {
-    id 'java'
+    id 'scala'
     id 'application'
 }
 
@@ -14,7 +14,7 @@ dependencies {
     compile project(':goverdrive-core')
 }
 
-mainClassName = 'de.admir.goverdrive.client.DaemonMain'
+mainClassName = 'de.admir.goverdrive.daemon.DaemonMain'
 
 task fatJar(type: Jar) {
     baseName = project.name + '-all'
