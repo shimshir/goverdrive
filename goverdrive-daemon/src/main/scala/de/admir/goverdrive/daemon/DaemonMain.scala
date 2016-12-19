@@ -8,5 +8,5 @@ import scala.language.postfixOps
 
 
 object DaemonMain extends App with StrictLogging {
-    Await.result(SyncService.syncToRemoteFuture, 1 minute)
+    Await.result(SyncService.sync, 1 minute)
 }
