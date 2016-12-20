@@ -2,11 +2,13 @@ package de.admir.goverdrive.daemon.sync
 
 import java.io.File
 import java.sql.Timestamp
+
 import com.typesafe.scalalogging.StrictLogging
 import de.admir.goverdrive.daemon.error.DaemonError
 import de.admir.goverdrive.scala.core.{GoverdriveServiceWrapper => GoverdriveService}
 import de.admir.goverdrive.scala.core.db.GoverdriveDb
 import de.admir.goverdrive.scala.core.model.FileMapping
+
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
@@ -93,6 +95,11 @@ object SyncService extends StrictLogging {
     }
 
     def syncRemoteToLocalFuture(fileMappings: Seq[FileMapping]): Future[Seq[DaemonError Either FileMapping]] = {
-        ???
+        fileMappings.map(fileMapping => {
+            GoverdriveService.getFileStream(fileMapping.remotePath) match {
+                case Left(error) => DaemonError(s"Error while downloading from remote for $fileMapping", error)
+                case Right(byteArrayOutputStream) => ???
+            }
+        })
     }
 }
