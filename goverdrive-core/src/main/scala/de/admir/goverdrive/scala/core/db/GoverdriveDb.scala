@@ -67,8 +67,8 @@ object GoverdriveDb {
         Await.result(getFileMappingsFuture, timeout)
     }
 
-    private def initDb(): Unit = {
-        def shouldSetupFolderStructure(): Boolean = dbFolder.exists()
+    def initDb(): Unit = {
+        def shouldSetupFolderStructure(): Boolean = !dbFolder.exists()
         def setupFolderStructure(): Unit = dbFolder.mkdirs()
 
         def shouldSetupDbSync(): Boolean = Await.result(tableNamesFuture.map(!_.contains("FILE_MAPPING")), timeout)

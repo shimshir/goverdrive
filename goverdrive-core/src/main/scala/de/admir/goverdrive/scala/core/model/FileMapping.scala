@@ -12,5 +12,4 @@ case class FileMapping(pk: Option[Int] = None,
                        syncedAt: Option[Timestamp] = None) {
 
     override def toString: String = CaseClassBeautifier.nice(this)
-
 }

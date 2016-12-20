@@ -4,7 +4,7 @@ import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 
 object CaseClassBeautifier {
-    def getCaseAccessors[T: TypeTag] = typeOf[T].members.collect { case m: MethodSymbol if m.isCaseAccessor => m }.toList
+    private def getCaseAccessors[T: TypeTag] = typeOf[T].members.collect { case m: MethodSymbol if m.isCaseAccessor => m }.toList
 
     def nice[T: TypeTag](x: T)(implicit classTag: ClassTag[T]): String = {
         val instance = x.asInstanceOf[T]
