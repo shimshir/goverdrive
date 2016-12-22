@@ -15,8 +15,13 @@ import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
 import de.admir.goverdrive.scala.core.MappingService._
 
+import scala.concurrent.duration._
+import scala.language.postfixOps
+
 
 object SyncService extends StrictLogging {
+
+    val outOfSyncThreshold: Long = (15 seconds) toMillis
 
     def sync: Future[(Seq[DaemonFeedback Either FileMapping], Seq[DaemonFeedback Either FileMapping])] = {
         GoverdriveDb.getFileMappingsFuture.flatMap(fileMappings => {
@@ -31,10 +36,9 @@ object SyncService extends StrictLogging {
 
     def filterLocalToRemoteSyncables(fileMappings: Seq[FileMapping]): Seq[FileMapping] = {
         fileMappings.filter(fileMapping => {
-            if (
-                !remoteExists(fileMapping) && localExists(fileMapping)
+            if (!remoteExists(fileMapping) && localExists(fileMapping)
                     ||
-                    (remoteExists(fileMapping) && localExists(fileMapping) && remoteTimestamp(fileMapping) < localTimestamp(fileMapping))
+                    (remoteExists(fileMapping) && localExists(fileMapping) && (localTimestamp(fileMapping) - remoteTimestamp(fileMapping) > outOfSyncThreshold))
             ) true
             else false
         })
@@ -42,7 +46,7 @@ object SyncService extends StrictLogging {
 
     def filterRemoteToLocalSyncables(fileMappings: Seq[FileMapping]): Seq[FileMapping] = {
         fileMappings.filter(fileMapping => {
-            if ((remoteExists(fileMapping) && localExists(fileMapping) && remoteTimestamp(fileMapping) > localTimestamp(fileMapping))
+            if ((remoteExists(fileMapping) && localExists(fileMapping) && (remoteTimestamp(fileMapping) - localTimestamp(fileMapping) > outOfSyncThreshold))
                 ||
                 remoteExists(fileMapping) && !localExists(fileMapping)
             ) true
@@ -61,8 +65,7 @@ object SyncService extends StrictLogging {
                         GoverdriveDb.updateFileMappingFuture(
                             fileMapping.copy(
                                 fileId = Some(driveFile.getId),
-                                syncedAt = Some(new Timestamp(driveFile.getModifiedTime.getValue)),
-                                remoteTimestamp = Some(new Timestamp(driveFile.getModifiedTime.getValue))
+                                syncedAt = Some(new Timestamp(driveFile.getModifiedTime.getValue))
                             )
                         ).map {
                             case Some(updatedFileMapping) =>
@@ -103,8 +106,7 @@ object SyncService extends StrictLogging {
                                                 case Success(_) => GoverdriveDb
                                                     .updateFileMappingFuture(
                                                         fileMapping.copy(
-                                                            syncedAt = Some(new Timestamp(file.getModifiedTime.getValue)),
-                                                            localTimestamp = Some(new Timestamp(System.currentTimeMillis()))
+                                                            syncedAt = Some(new Timestamp(file.getModifiedTime.getValue))
                                                         )
                                                     )
                                                     .map {

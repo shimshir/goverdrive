@@ -14,7 +14,7 @@ object GoverdriveServiceWrapper {
 
     def getFileStream(path: String): DriveError Either ByteArrayOutputStream = gs.getFileStream(path)
 
-    def createFile(localPath: String, remotePath: String): DriveError Either File = gs.createFile(localPath, remotePath)
+    def createFile(localPath: String, remotePath: String, overwrite: Boolean = true): DriveError Either File = gs.createFile(localPath, remotePath, overwrite)
 
     def getRootFolder: DriveError Either File = gs.getRootFolder
 

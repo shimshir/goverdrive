@@ -61,8 +61,7 @@ object MappingProcessor extends StrictLogging {
     }
 
     private def insertFileMapping(localPath: String, remotePath: String): ClientFeedback Either FileMapping = {
-        ??? // TODO: Get the local and remote timestamp
-        //insertMapping(localPath, remotePath)
+        insertMapping(localPath, remotePath)
     }
 
     private def insertFolderMappingForLocal(localPath: String, remotePath: String): Seq[ClientFeedback Either FileMapping] = {
@@ -75,7 +74,6 @@ object MappingProcessor extends StrictLogging {
                     val absoluteRemotePath = remotePath + relativeLocalPath
                     insertMapping(
                         localPath = file.getAbsolutePath,
-                        localTimestamp = Some(new Timestamp(file.lastModified)),
                         remotePath = absoluteRemotePath
                     )
                 }
@@ -92,23 +90,17 @@ object MappingProcessor extends StrictLogging {
                     val absoluteLocalPath = localPath + relativeRemotePath
                     insertMapping(
                         localPath = absoluteLocalPath,
-                        remotePath = file.getAbsolutePath,
-                        remoteTimestamp = Some(new Timestamp(file.getModifiedTime.getValue))
+                        remotePath = file.getAbsolutePath
                     )
                 }
         }
     }
 
-    private def insertMapping(localPath: String,
-                              localTimestamp: Option[Timestamp] = None,
-                              remotePath: String,
-                              remoteTimestamp: Option[Timestamp] = None): ClientFeedback Either FileMapping = {
+    private def insertMapping(localPath: String, remotePath: String): ClientFeedback Either FileMapping = {
         GoverdriveDb.insertFileMapping(
             FileMapping(
                 localPath = localPath,
-                localTimestamp = localTimestamp,
-                remotePath = remotePath,
-                remoteTimestamp = remoteTimestamp
+                remotePath = remotePath
             )
         ) match {
             case Right(fileMapping) =>

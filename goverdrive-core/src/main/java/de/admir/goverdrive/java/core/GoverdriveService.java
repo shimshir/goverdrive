@@ -13,7 +13,7 @@ public interface GoverdriveService {
 
     Xor<DriveError, ByteArrayOutputStream> getFileStream(String path);
 
-    Xor<DriveError, File> createFile(String localPath, String remotePath);
+    Xor<DriveError, File> createFile(String localPath, String remotePath, boolean overwrite);
 
     Xor<DriveError, File> getRootFolder();
 
@@ -24,4 +24,6 @@ public interface GoverdriveService {
     Xor<DriveError, List<File>> getFilePathList(String remotePath);
 
     Xor<DriveError, File> createFolder(String remotePath, boolean createIntermediate);
+
+    Xor<DriveError, Void> deleteFile(String path);
 }

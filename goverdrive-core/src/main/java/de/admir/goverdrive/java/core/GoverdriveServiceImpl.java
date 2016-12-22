@@ -77,11 +77,20 @@ public class GoverdriveServiceImpl implements GoverdriveService {
     }
 
     @Override
-    public Xor<DriveError, File> createFile(String localPath, String remotePath) {
+    public Xor<DriveError, File> createFile(String localPath, String remotePath, boolean overwrite) {
         logger.debug(String.format("Attempting to create file, localPath: %s, remotePath: %s", localPath, remotePath));
 
-        if (getFile(remotePath).isRight())
-            return Xor.left(new DriveError("File already exists, remotePath: " + remotePath, DriveErrorType.DUPLICATE_FILE));
+        // could be nicer
+        if (getFile(remotePath).isRight()) {
+            if (overwrite) {
+                Xor<DriveError, Void> deleteResult = deleteFile(remotePath);
+                if (deleteResult.isLeft())
+                    return Xor.left(deleteResult.getLeft());
+            } else {
+                return Xor.left(new DriveError("File already exists, remotePath: " + remotePath, DriveErrorType.DUPLICATE_FILE));
+            }
+        }
+
 
         final java.io.File localFile = new java.io.File(localPath);
         Xor<IOError, FileContent> xorFileContent = loadFileContent(localFile);
@@ -181,6 +190,29 @@ public class GoverdriveServiceImpl implements GoverdriveService {
     @Override
     public Xor<DriveError, File> createFolder(String remotePath, boolean createIntermediate) {
         return createIntermediate ? createFolderWithIntermediate(remotePath) : createFolderNoIntermediate(remotePath);
+    }
+
+    @Override
+    public Xor<DriveError, Void> deleteFile(String path) {
+        return getFile(path).flatMapRight(file ->
+            createAuthorizedDriveService()
+                .mapLeft(authorizationError -> new DriveError("Error while creating authorized drive service", DriveErrorType.NESTED).addNestedError(authorizationError))
+                .flatMapRight(driveService -> Xor.catchNonFatal(() -> {
+                        Void result = driveService.files().delete(file.getId()).execute();
+                        deleteFromFilesAndFoldersCache(file);
+                        return result;
+                    }).mapLeft(DriveError::new)
+                )
+        );
+    }
+
+    private static void deleteFromFilesAndFoldersCache(File fileOrFolder) {
+        List<File> cachedFilesAndFolder = CacheService.getAllFilesAndFolders();
+        if (cachedFilesAndFolder != null) {
+            List<File> updatedFilesAndFolders = new ArrayList<>(cachedFilesAndFolder);
+            updatedFilesAndFolders.removeIf(file -> fileOrFolder.getId().equals(file.getId()));
+            CacheService.updateAllFilesAndFolders(updatedFilesAndFolders);
+        }
     }
 
     private static void updateFilesAndFoldersCache(File newFileOrFolder) {
