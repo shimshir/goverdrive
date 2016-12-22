@@ -10,8 +10,7 @@ import de.admir.goverdrive.scala.core.db.GoverdriveDb
 import de.admir.goverdrive.scala.core.model.FileMapping
 import de.admir.goverdrive.scala.core.util.CoreUtils
 import de.admir.goverdrive.scala.core.util.FileType._
-
-import scala.collection.immutable.Seq
+import de.admir.goverdrive.scala.core.util.implicits._
 import scala.language.postfixOps
 import scala.util.Left
 
@@ -64,16 +63,29 @@ object MappingProcessor extends StrictLogging {
     }
 
     private def insertFolderMappingForLocal(localPath: String, remotePath: String): Seq[ClientFeedback Either FileMapping] = {
-        CoreUtils.getFileTree(new File(localPath)) filter (!_.isDirectory) map { file =>
-            val relativeLocalPath = file.getAbsolutePath.replaceFirst(localPath, SystemUtils.EMPTY_STRING)
-            val absoluteRemotePath = remotePath + relativeLocalPath
-            insertMapping(file.getAbsolutePath, absoluteRemotePath)
-        } force
+        CoreUtils.getLocalFileTree(localPath) match {
+            case Left(coreFeedback) =>
+                Seq(Left(ClientFeedback("Error while walking local file tree", coreFeedback)))
+            case Right(files) =>
+                files filter (!_.isDirectory) map { file =>
+                    val relativeLocalPath = file.getAbsolutePath.replaceFirst(localPath, SystemUtils.EMPTY_STRING)
+                    val absoluteRemotePath = remotePath + relativeLocalPath
+                    insertMapping(file.getAbsolutePath, absoluteRemotePath)
+                }
+        }
     }
 
     private def insertFolderMappingForRemote(localPath: String, remotePath: String): Seq[ClientFeedback Either FileMapping] = {
-        // TODO: Implement remote folder walk
-        ???
+        CoreUtils.getRemoteFileTree(remotePath) match {
+            case Left(coreFeedback) =>
+                Seq(Left(ClientFeedback("Error while walking remote file tree", coreFeedback)))
+            case Right(files) =>
+                files filter (!_.isDirectory) map { file =>
+                    val relativeRemotePath = file.getAbsolutePath.replaceFirst(remotePath, SystemUtils.EMPTY_STRING)
+                    val absoluteLocalPath = localPath + relativeRemotePath
+                    insertMapping(absoluteLocalPath, file.getAbsolutePath)
+                }
+        }
     }
 
     private def insertMapping(localPath: String, remotePath: String): ClientFeedback Either FileMapping = {

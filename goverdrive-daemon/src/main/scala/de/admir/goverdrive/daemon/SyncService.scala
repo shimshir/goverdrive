@@ -81,7 +81,7 @@ object SyncService extends StrictLogging {
     def syncRemoteToLocalFuture(fileMappings: Seq[FileMapping]): Future[Seq[DaemonFeedback Either FileMapping]] = {
         Future.sequence {
             fileMappings.map(fileMapping => {
-                GoverdriveService.findFile(fileMapping.remotePath) match {
+                GoverdriveService.getFile(fileMapping.remotePath) match {
                     case Left(error) =>
                         Future.successful(Left(DaemonFeedback(s"Could not find remote file: ${fileMapping.remotePath}", error)))
                     case Right(file) =>

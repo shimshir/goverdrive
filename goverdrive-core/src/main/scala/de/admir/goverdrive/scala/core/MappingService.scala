@@ -21,7 +21,7 @@ object MappingService {
     }
 
     def getRemoteFileType(path: String): CoreFeedback Either FileType = {
-        GoverdriveService.findFile(path) match {
+        GoverdriveService.getFile(path) match {
             case Left(error) => Left(CoreFeedback(s"Remote file not found, path: $path", error))
             case Right(file) => file.getMimeType match {
                 case "application/vnd.google-apps.file" => Right(FILE)
@@ -36,7 +36,7 @@ object MappingService {
     }
 
     def remoteExists(path: String): Boolean = {
-        GoverdriveService.findFile(path).isRight
+        GoverdriveService.getFile(path).isRight
     }
 
     def localExists(fileMapping: FileMapping): Boolean = {
@@ -52,7 +52,7 @@ object MappingService {
     }
 
     def remoteTimestamp(fileMapping: FileMapping): Long = {
-        GoverdriveService.findFile(fileMapping.remotePath) match {
+        GoverdriveService.getFile(fileMapping.remotePath) match {
             case Left(_) => -1
             case Right(file) => file.getModifiedTime.getValue
         }

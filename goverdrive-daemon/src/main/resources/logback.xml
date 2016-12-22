@@ -4,7 +4,9 @@
             <pattern>%d{yyyy-MM-dd HH:mm:ss} [%thread] %highlight(%-5level) %cyan(%logger{36}) [%line] - %msg%n</pattern>
         </encoder>
     </appender>
-    <root level="info">
-        <appender-ref ref="STDOUT" />
+    <root level="debug">
+        <appender-ref ref="STDOUT"/>
     </root>
+    <logger name="slick" level="info"/>
+    <logger name="slick.backend" level="debug"/>
 </configuration>

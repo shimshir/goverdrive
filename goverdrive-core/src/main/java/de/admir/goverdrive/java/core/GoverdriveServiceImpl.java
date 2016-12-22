@@ -147,38 +147,35 @@ public class GoverdriveServiceImpl implements GoverdriveService {
     @Override
     public Xor<DriveError, List<File>> getFilePathList(String remotePath) {
         List<String> fileNames = pathToList(remotePath);
+        Xor<DriveError, File> rootFolderXor = getRootFolder();
 
-        final Xor<DriveError, List<File>> xorFiles = getAllFilesAndFolders();
+        if (rootFolderXor.isLeft())
+            return Xor.left(rootFolderXor.getLeft());
 
-        final Xor<DriveError, List<List<File>>> xorCandidatesList = xorFiles.flatMapRight(files -> {
-            List<List<File>> candidatesList = new ArrayList<>();
-            for (String fileName : addFirst("My Drive", fileNames)) {
-                List<File> candidates = files.stream().filter(file -> fileName.equals(file.getName())).collect(Collectors.toList());
-                if (candidates.size() == 0)
-                    return Xor.left(new DriveError("No folder found named: " + fileName, DriveErrorType.FOLDER_NOT_FOUND));
-                candidatesList.add(candidates);
-            }
+        final File rootFolder = rootFolderXor.getRight();
 
-            return Xor.right(candidatesList);
-        });
-
-        Xor<DriveError, List<File>> xorCandidates = xorCandidatesList.flatMapRight(candidatesList -> {
-            LinkedList<File> filteredCandidates = new LinkedList<>();
-            for (int candidatesIndex = candidatesList.size() - 1; candidatesIndex > 0; candidatesIndex--) {
-                List<File> files = candidatesList.get(candidatesIndex);
-                List<File> possibleParents = candidatesList.get(candidatesIndex - 1);
-                Xor<DriveError, File> xorConjunctFile = findConjunctFile(files, possibleParents);
-                if (xorConjunctFile.isLeft()) {
-                    return Xor.left(xorConjunctFile.getLeft());
-                } else {
-                    filteredCandidates.addFirst(xorConjunctFile.getRight());
+        return getAllFilesAndFolders().flatMapRight(allFilesAndFolders -> {
+                File currentParent = rootFolder;
+                LinkedList<File> filePath = new LinkedList<>();
+                filePath.add(rootFolder);
+                for (String fileName : fileNames) {
+                    final File stupidJavaFinalCurrentParent = currentParent;
+                    List<File> files = allFilesAndFolders
+                        .stream()
+                        .filter(file -> fileName.equals(file.getName()) && stupidJavaFinalCurrentParent.getId().equals(file.getParents().get(0)))
+                        .collect(Collectors.toList());
+                    if (files.size() == 0)
+                        return Xor.left(new DriveError(String.format("Folder: %s not found in path: %s", fileName, remotePath), DriveErrorType.FOLDER_NOT_FOUND));
+                    else if (files.size() > 1)
+                        return Xor.left(new DriveError(String.format("Duplicate folder: %s in path: %s", fileName, remotePath), DriveErrorType.DUPLICATE_FOLDER));
+                    else {
+                        currentParent = files.get(0);
+                        filePath.add(currentParent);
+                    }
                 }
+                return Xor.right(filePath);
             }
-            filteredCandidates.addFirst(candidatesList.get(0).get(0));
-            return Xor.right(filteredCandidates);
-        });
-
-        return xorCandidates;
+        );
     }
 
     @Override
@@ -281,26 +278,6 @@ public class GoverdriveServiceImpl implements GoverdriveService {
 
     private Xor<AuthorizationError, Drive> createAuthorizedDriveService() {
         return authorize().mapRight(credential -> new Drive.Builder(HTTP_TRANSPORT, JSON_FACTORY, credential).setApplicationName(CoreConfig.CONFIG.getString("goverdrive.name")).build());
-    }
-
-    private static Xor<DriveError, File> findConjunctFile(List<File> files, List<File> parents) {
-        Optional<File> conjunctFile = Optional.empty();
-        for (File file : files) {
-            for (File parent : parents) {
-                if (file.getParents().contains(parent.getId())) {
-                    if (conjunctFile.isPresent()) {
-                        return Xor.left(new DriveError("Duplicate folder: " + file.getName(), DriveErrorType.DUPLICATE_FOLDER));
-                    } else {
-                        conjunctFile = Optional.of(file);
-                    }
-                }
-            }
-        }
-        if (conjunctFile.isPresent()) {
-            return Xor.right(conjunctFile.get());
-        } else {
-            return Xor.left(new DriveError("No parent found for folder!", DriveErrorType.INVALID_PARENT));
-        }
     }
 
     private static <T> List<T> addFirst(T elem, List<T> list) {
