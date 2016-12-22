@@ -2,8 +2,8 @@ package de.admir.goverdrive.scala.core.util
 
 
 import java.io.{File => JFile}
-import de.admir.goverdrive.scala.core.util.implicits._
 
+import de.admir.goverdrive.scala.core.util.implicits._
 import com.google.api.services.drive.model.{File => GFile}
 import de.admir.goverdrive.scala.core.feedback.CoreFeedback
 import de.admir.goverdrive.scala.core.{GoverdriveServiceWrapper => GoverdriveService}

@@ -29,13 +29,17 @@ object GoverdriveDb {
 
         def localPath = column[String]("LOCAL_PATH")
 
+        def localTimestamp = column[Option[Timestamp]]("LOCAL_TIMESTAMP")
+
         def remotePath = column[String]("REMOTE_PATH")
+
+        def remoteTimestamp = column[Option[Timestamp]]("REMOTE_TIMESTAMP")
 
         def syncedAt = column[Option[Timestamp]]("SYNCED_AT")
 
         def idx = index("IDX_FILE_ID", fileId, unique = true)
 
-        override def * = (pk, fileId, localPath, remotePath, syncedAt) <> (FileMapping.tupled, FileMapping.unapply)
+        override def * = (pk, fileId, localPath, localTimestamp, remotePath, remoteTimestamp, syncedAt) <> (FileMapping.tupled, FileMapping.unapply)
     }
 
     private val fileMappings = TableQuery[FileMappings]

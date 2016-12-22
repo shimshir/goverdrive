@@ -1,6 +1,7 @@
 package de.admir.goverdrive.client
 
 import java.io.File
+import java.sql.Timestamp
 
 import com.typesafe.scalalogging.StrictLogging
 import de.admir.goverdrive.client.feedback.ClientFeedback
@@ -11,6 +12,7 @@ import de.admir.goverdrive.scala.core.model.FileMapping
 import de.admir.goverdrive.scala.core.util.CoreUtils
 import de.admir.goverdrive.scala.core.util.FileType._
 import de.admir.goverdrive.scala.core.util.implicits._
+import com.google.api.services.drive.model.{File => GFile}
 import scala.language.postfixOps
 import scala.util.Left
 
@@ -59,7 +61,8 @@ object MappingProcessor extends StrictLogging {
     }
 
     private def insertFileMapping(localPath: String, remotePath: String): ClientFeedback Either FileMapping = {
-        insertMapping(localPath, remotePath)
+        ??? // TODO: Get the local and remote timestamp
+        //insertMapping(localPath, remotePath)
     }
 
     private def insertFolderMappingForLocal(localPath: String, remotePath: String): Seq[ClientFeedback Either FileMapping] = {
@@ -70,7 +73,11 @@ object MappingProcessor extends StrictLogging {
                 files filter (!_.isDirectory) map { file =>
                     val relativeLocalPath = file.getAbsolutePath.replaceFirst(localPath, SystemUtils.EMPTY_STRING)
                     val absoluteRemotePath = remotePath + relativeLocalPath
-                    insertMapping(file.getAbsolutePath, absoluteRemotePath)
+                    insertMapping(
+                        localPath = file.getAbsolutePath,
+                        localTimestamp = Some(new Timestamp(file.lastModified)),
+                        remotePath = absoluteRemotePath
+                    )
                 }
         }
     }
@@ -80,16 +87,30 @@ object MappingProcessor extends StrictLogging {
             case Left(coreFeedback) =>
                 Seq(Left(ClientFeedback("Error while walking remote file tree", coreFeedback)))
             case Right(files) =>
-                files filter (!_.isDirectory) map { file =>
+                files filter (!_.isDirectory) map { file: GFile =>
                     val relativeRemotePath = file.getAbsolutePath.replaceFirst(remotePath, SystemUtils.EMPTY_STRING)
                     val absoluteLocalPath = localPath + relativeRemotePath
-                    insertMapping(absoluteLocalPath, file.getAbsolutePath)
+                    insertMapping(
+                        localPath = absoluteLocalPath,
+                        remotePath = file.getAbsolutePath,
+                        remoteTimestamp = Some(new Timestamp(file.getModifiedTime.getValue))
+                    )
                 }
         }
     }
 
-    private def insertMapping(localPath: String, remotePath: String): ClientFeedback Either FileMapping = {
-        GoverdriveDb.insertFileMapping(FileMapping(None, None, localPath, remotePath)) match {
+    private def insertMapping(localPath: String,
+                              localTimestamp: Option[Timestamp] = None,
+                              remotePath: String,
+                              remoteTimestamp: Option[Timestamp] = None): ClientFeedback Either FileMapping = {
+        GoverdriveDb.insertFileMapping(
+            FileMapping(
+                localPath = localPath,
+                localTimestamp = localTimestamp,
+                remotePath = remotePath,
+                remoteTimestamp = remoteTimestamp
+            )
+        ) match {
             case Right(fileMapping) =>
                 logger.info(s"Successfully added file mapping: $fileMapping")
                 Right(fileMapping)

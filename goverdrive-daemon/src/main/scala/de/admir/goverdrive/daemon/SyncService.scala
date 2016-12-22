@@ -61,7 +61,8 @@ object SyncService extends StrictLogging {
                         GoverdriveDb.updateFileMappingFuture(
                             fileMapping.copy(
                                 fileId = Some(driveFile.getId),
-                                syncedAt = Some(new Timestamp(driveFile.getModifiedTime.getValue))
+                                syncedAt = Some(new Timestamp(driveFile.getModifiedTime.getValue)),
+                                remoteTimestamp = Some(new Timestamp(driveFile.getModifiedTime.getValue))
                             )
                         ).map {
                             case Some(updatedFileMapping) =>
@@ -100,7 +101,12 @@ object SyncService extends StrictLogging {
                                                 case Failure(t) =>
                                                     Future.successful(Left(DaemonFeedback(t)))
                                                 case Success(_) => GoverdriveDb
-                                                    .updateFileMappingFuture(fileMapping.copy(syncedAt = Some(new Timestamp(file.getModifiedTime.getValue))))
+                                                    .updateFileMappingFuture(
+                                                        fileMapping.copy(
+                                                            syncedAt = Some(new Timestamp(file.getModifiedTime.getValue)),
+                                                            localTimestamp = Some(new Timestamp(System.currentTimeMillis()))
+                                                        )
+                                                    )
                                                     .map {
                                                         case Some(updatedFileMapping) =>
                                                             val successMessage = s"Successfully synced and updated fileMapping: $updatedFileMapping"

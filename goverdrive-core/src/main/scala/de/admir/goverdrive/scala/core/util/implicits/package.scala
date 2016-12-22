@@ -1,5 +1,7 @@
 package de.admir.goverdrive.scala.core.util
 
+import java.sql.Timestamp
+
 import com.google.api.services.drive.model.{File => GFile}
 import com.typesafe.scalalogging.LazyLogging
 import de.admir.goverdrive.java.core.util.SystemUtils
@@ -45,5 +47,26 @@ package object implicits extends LazyLogging {
             }
         }
     }
+
+    implicit class TimestampOrdering(a: Timestamp) {
+        def compare(b: Timestamp): Int = a.getTime compare b.getTime
+    }
+
+    /*
+    implicit class OptionImprovements[A <: Ordered[A]](thisOption: Option[A]) {
+        def isGreaterThan(option: Option[A]): Boolean = {
+            (thisOption, option) match {
+                case (Some(thisValue), Some(value)) =>
+                    thisValue > value
+                case (Some(_), None) =>
+                    true
+                case (None, Some(_)) =>
+                    false
+                case (None, None) =>
+                    false
+            }
+        }
+    }
+    */
 
 }

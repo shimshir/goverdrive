@@ -48,13 +48,10 @@ object MappingService {
     }
 
     def localTimestamp(fileMapping: FileMapping): Long = {
-        fileMapping.syncedAt.map(timestamp => timestamp.getTime).getOrElse(-1)
+        fileMapping.localTimestamp.map(timestamp => timestamp.getTime).getOrElse(-1)
     }
 
     def remoteTimestamp(fileMapping: FileMapping): Long = {
-        GoverdriveService.getFile(fileMapping.remotePath) match {
-            case Left(_) => -1
-            case Right(file) => file.getModifiedTime.getValue
-        }
+        fileMapping.remoteTimestamp.map(timestamp => timestamp.getTime).getOrElse(-1)
     }
 }
