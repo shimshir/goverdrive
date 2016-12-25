@@ -8,7 +8,7 @@ import slick.driver.SQLiteDriver.api._
 
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
-import de.admir.goverdrive.scala.core.model.FileMapping
+import de.admir.goverdrive.scala.core.model.{FileMapping, LocalFolder}
 import de.admir.goverdrive.scala.core.util.CoreUtils.catchNonFatal
 import slick.jdbc.meta.MTable
 import slick.lifted.TableQuery
@@ -22,6 +22,18 @@ object GoverdriveDb {
     private val dbFolder = new File(CoreConfig.getDbFolder)
     private val db = Database.forConfig("goverdrive.db")
 
+    case class LocalFolders(tag: Tag) extends Table[LocalFolder](tag, "LOCAL_FOLDERS") {
+        def pk = column[Option[Int]]("PK", O.PrimaryKey, O.AutoInc)
+
+        def path = column[String]("PATH")
+
+        def pathIndex = index("IDX_PATH", path, unique = true)
+
+        override def * = (pk, path) <> (LocalFolder.tupled, LocalFolder.unapply)
+    }
+
+    private val localFolders = TableQuery[LocalFolders]
+
     case class FileMappings(tag: Tag) extends Table[FileMapping](tag, "FILE_MAPPING") {
         def pk = column[Option[Int]]("PK", O.PrimaryKey, O.AutoInc)
 
@@ -33,14 +45,22 @@ object GoverdriveDb {
 
         def syncedAt = column[Option[Timestamp]]("SYNCED_AT")
 
-        def idx = index("IDX_FILE_ID", fileId, unique = true)
+        def localFolderPk = column[Option[Int]]("LOCAL_FOLDER_PK")
 
-        override def * = (pk, fileId, localPath, remotePath, syncedAt) <> (FileMapping.tupled, FileMapping.unapply)
+        def localFolderFk = foreignKey("LOCAL_FOLDER_FK", localFolderPk, localFolders)(_.pk, onUpdate = ForeignKeyAction.Restrict, onDelete = ForeignKeyAction.Cascade)
+
+        def fileIdIndex = index("IDX_FILE_ID", fileId, unique = true)
+
+        def localPathIndex = index("IDX_LOCAL_PATH", localPath, unique = true)
+
+        override def * = (pk, fileId, localPath, remotePath, syncedAt, localFolderPk) <> (FileMapping.tupled, FileMapping.unapply)
     }
 
     private val fileMappings = TableQuery[FileMappings]
 
-    private val setupSchemaAction = fileMappings.schema.create
+    private val setupSchemaAction = DBIO.seq(
+        (localFolders.schema ++ fileMappings.schema).create
+    )
 
     def tableNamesFuture: Future[Vector[String]] = db.run(MTable.getTables).map(_.map(_.name.name))
 
@@ -67,11 +87,22 @@ object GoverdriveDb {
         Await.result(getFileMappingsFuture, timeout)
     }
 
+    def insertLocalFolderFuture(localFolder: LocalFolder): Future[LocalFolder] = {
+        val insertAction = (localFolders returning localFolders.map(_.pk)) += localFolder
+        db.run(insertAction).map(pk => localFolder.copy(pk = pk))
+    }
+
+    def insertLocalFolder(localFolder: LocalFolder): Throwable Either LocalFolder = catchNonFatal {
+        Await.result(insertLocalFolderFuture(localFolder), timeout)
+    }
+
     def initDb(): Unit = {
         def shouldSetupFolderStructure(): Boolean = !dbFolder.exists()
+
         def setupFolderStructure(): Unit = dbFolder.mkdirs()
 
         def shouldSetupDbSync(): Boolean = Await.result(tableNamesFuture.map(!_.contains("FILE_MAPPING")), timeout)
+
         def setupDbSync(): Unit = Await.result(db.run(setupSchemaAction), timeout)
 
         if (shouldSetupFolderStructure())

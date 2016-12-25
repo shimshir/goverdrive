@@ -24,6 +24,12 @@ object SyncService extends StrictLogging {
     val outOfSyncThreshold: Long = (15 seconds) toMillis
 
     def sync: Future[(Seq[DaemonFeedback Either FileMapping], Seq[DaemonFeedback Either FileMapping])] = {
+
+        // TODO: Check for locally deleted files that were synced, delete them remotely and remove fileMapping entry
+        // TODO: Check for remotely deleted files that were synced, delete them locally and remove fileMapping entry
+
+        // TODO: Check if files inside localFolders were changed and sync them
+
         GoverdriveDb.getFileMappingsFuture.flatMap(fileMappings => {
             val localToRemoteSyncables = filterLocalToRemoteSyncables(fileMappings)
             val remoteToLocalSyncables = filterRemoteToLocalSyncables(fileMappings)
