@@ -43,8 +43,8 @@ object SyncService extends StrictLogging {
     def filterLocalToRemoteSyncables(fileMappings: Seq[FileMapping]): Seq[FileMapping] = {
         fileMappings.filter(fileMapping => {
             if (!remoteExists(fileMapping) && localExists(fileMapping)
-                    ||
-                    (remoteExists(fileMapping) && localExists(fileMapping) && (localTimestamp(fileMapping) - remoteTimestamp(fileMapping) > outOfSyncThreshold))
+                ||
+                (remoteExists(fileMapping) && localExists(fileMapping) && (localTimestamp(fileMapping) - remoteTimestamp(fileMapping) > outOfSyncThreshold))
             ) true
             else false
         })
