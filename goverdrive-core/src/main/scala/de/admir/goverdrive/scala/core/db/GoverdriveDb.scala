@@ -4,6 +4,7 @@ import java.io.File
 import java.sql.Timestamp
 
 import de.admir.goverdrive.java.core.config.CoreConfig
+import de.admir.goverdrive.scala.core.feedback.CoreFeedback
 import slick.driver.SQLiteDriver.api._
 
 import scala.concurrent.{Await, Future}
@@ -85,6 +86,23 @@ object GoverdriveDb {
 
     def getFileMappings: Throwable Either Seq[FileMapping] = catchNonFatal {
         Await.result(getFileMappingsFuture, timeout)
+    }
+
+    def deleteFileMappingFuture(pk: Int): Future[CoreFeedback Either Int] = {
+        val deleteAction = fileMappings.filter(_.pk === pk).delete
+        db.run(deleteAction) map {
+            case 0 => Left(CoreFeedback(s"No fileMapping was deleted for pk: $pk"))
+            case affectedRows => Right(affectedRows)
+        }
+    }
+
+    def deleteFileMapping(pk: Int): CoreFeedback Either Int = {
+        catchNonFatal {
+            Await.result(deleteFileMappingFuture(pk), timeout)
+        } match {
+            case Left(t) => Left(CoreFeedback(s"Error while trying to delete fileMapping, pk: $pk", t))
+            case Right(result) => result
+        }
     }
 
     def insertLocalFolderFuture(localFolder: LocalFolder): Future[LocalFolder] = {

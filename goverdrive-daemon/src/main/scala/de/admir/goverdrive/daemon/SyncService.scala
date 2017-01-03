@@ -28,9 +28,16 @@ object SyncService extends StrictLogging {
         // TODO: Check for locally deleted files that were synced, delete them remotely and remove fileMapping entry
         // TODO: Check for remotely deleted files that were synced, delete them locally and remove fileMapping entry
 
-        // TODO: Check if files inside localFolders were changed and sync them
+        // TODO: Check if files inside localFolders were added/removed and sync them
 
         GoverdriveDb.getFileMappingsFuture.flatMap(fileMappings => {
+            val syncedFileMappings = fileMappings.filter(_.fileId.isDefined)
+
+            val localFileMappingsToDelete = syncedFileMappings.filter(!remoteExists(_))
+            val remoteFileMappingsToDelete = syncedFileMappings.filter(!localExists(_))
+
+            // TODO: Implement rest
+
             val localToRemoteSyncables = filterLocalToRemoteSyncables(fileMappings)
             val remoteToLocalSyncables = filterRemoteToLocalSyncables(fileMappings)
             for {
@@ -71,7 +78,7 @@ object SyncService extends StrictLogging {
                         GoverdriveDb.updateFileMappingFuture(
                             fileMapping.copy(
                                 fileId = Some(driveFile.getId),
-                                syncedAt = Some(new Timestamp(driveFile.getModifiedTime.getValue))
+                                syncedAt = Some(new Timestamp(System.currentTimeMillis))
                             )
                         ).map {
                             case Some(updatedFileMapping) =>
@@ -110,11 +117,7 @@ object SyncService extends StrictLogging {
                                                 case Failure(t) =>
                                                     Future.successful(Left(DaemonFeedback(t)))
                                                 case Success(_) => GoverdriveDb
-                                                    .updateFileMappingFuture(
-                                                        fileMapping.copy(
-                                                            syncedAt = Some(new Timestamp(file.getModifiedTime.getValue))
-                                                        )
-                                                    )
+                                                    .updateFileMappingFuture(fileMapping.copy(syncedAt = Some(new Timestamp(System.currentTimeMillis))))
                                                     .map {
                                                         case Some(updatedFileMapping) =>
                                                             val successMessage = s"Successfully synced and updated fileMapping: $updatedFileMapping"
