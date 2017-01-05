@@ -29,20 +29,19 @@ object SyncService extends StrictLogging {
         // TODO: Check for locally deleted files, if (synced) { delete them remotely and remove fileMapping entry }
         checkForDeletedLocalFiles()
 
-        // TODO: Check for locally deleted folders, if (synced) { delete them remotely, remove localFolder entry }
-        checkForDeletedLocalFolders()
+        // TODO: Check if localFolders were deleted locally, if (synced) { delete them remotely and remove localFolder entry }
+        checkForDeletedFoldersOnLocal()
 
         // TODO: Check for remotely deleted files, if (synced) { delete them locally and remove fileMapping entry }
         checkForDeletedRemoteFiles()
 
-        // TODO: Check for remotely deleted folders, if (synced) {delete them locally and remove remoteFolder entry }
-        // might not be needed
-        // checkForDeletedRemoteFolders()
+        // TODO: Check if localFolders were deleted remotely, if (synced) { delete them locally and remove localFolder entry }
+        // checkForDeletedFoldersOnRemote()
 
-        // TODO: Check if files inside localFolders were added or removed locally and sync changes to remote
+        // TODO: Check for files inside localFolders that were added locally and add a fileMapping entry for them
         checkForAddedOrRemovedLocalFilesInsideFolders()
 
-        // TODO: Check if files inside localFolders were added or removed remotely and sync changes to local
+        // TODO: Check if files inside localFolders were added remotely and add a fileMapping entry for them
         checkForAddedOrRemovedRemoteFilesInsideFolders()
         */
 
