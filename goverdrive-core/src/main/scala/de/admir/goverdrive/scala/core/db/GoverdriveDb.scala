@@ -28,9 +28,11 @@ object GoverdriveDb {
 
         def path = column[String]("PATH")
 
+        def syncedAt = column[Option[Timestamp]]("SYNCED_AT")
+
         def pathIndex = index("IDX_PATH", path, unique = true)
 
-        override def * = (pk, path) <> (LocalFolder.tupled, LocalFolder.unapply)
+        override def * = (pk, path, syncedAt) <> (LocalFolder.tupled, LocalFolder.unapply)
     }
 
     private val localFolders = TableQuery[LocalFolders]
@@ -65,6 +67,15 @@ object GoverdriveDb {
 
     def tableNamesFuture: Future[Vector[String]] = db.run(MTable.getTables).map(_.map(_.name.name))
 
+
+    // *** fileMappings *** \\
+
+    def getFileMappingsFuture: Future[Seq[FileMapping]] = db.run(fileMappings.result)
+
+    def getFileMappings: Throwable Either Seq[FileMapping] = catchNonFatal {
+        Await.result(getFileMappingsFuture, timeout)
+    }
+
     def updateFileMappingFuture(fileMapping: FileMapping): Future[Option[FileMapping]] = {
         val updateAction = fileMappings.filter(_.pk === fileMapping.pk) update fileMapping
         db.run(updateAction).map {
@@ -82,12 +93,6 @@ object GoverdriveDb {
         Await.result(insertFileMappingFuture(fileMapping), timeout)
     }
 
-    def getFileMappingsFuture: Future[Seq[FileMapping]] = db.run(fileMappings.result)
-
-    def getFileMappings: Throwable Either Seq[FileMapping] = catchNonFatal {
-        Await.result(getFileMappingsFuture, timeout)
-    }
-
     def deleteFileMappingFuture(pk: Int): Future[CoreFeedback Either Int] = {
         val deleteAction = fileMappings.filter(_.pk === pk).delete
         db.run(deleteAction) map {
@@ -102,6 +107,21 @@ object GoverdriveDb {
         } match {
             case Left(t) => Left(CoreFeedback(s"Error while trying to delete fileMapping, pk: $pk", t))
             case Right(result) => result
+        }
+    }
+
+    // *** localFolders *** \\
+
+    def getLocalFolderFuture(pk: Int): Future[Option[LocalFolder]] = {
+        val queryAction = localFolders.filter(_.pk === pk).result.headOption
+        db.run(queryAction)
+    }
+
+    def updateLocalFolderFuture(localFolder: LocalFolder): Future[Option[LocalFolder]] = {
+        val updateAction = localFolders.filter(_.pk === localFolder.pk) update localFolder
+        db.run(updateAction).map {
+            case 0 => None
+            case _ => Some(localFolder)
         }
     }
 

@@ -42,7 +42,7 @@ public class GoverdriveServiceImpl implements GoverdriveService {
 
     private static final Logger logger = LoggerFactory.getLogger(GoverdriveServiceImpl.class);
 
-    private static final java.io.File DATA_STORE_DIR = new java.io.File(CoreConfig.CONFIG.getString("goverdrive.credentials.url"));
+    private static final java.io.File DATA_STORE_DIR = new java.io.File(CoreConfig.CONFIG.getString("goverdrive.credentials.folder"));
 
     private static final JsonFactory JSON_FACTORY = JacksonFactory.getDefaultInstance();
 
