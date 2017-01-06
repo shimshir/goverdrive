@@ -188,11 +188,6 @@ public class GoverdriveServiceImpl implements GoverdriveService {
     }
 
     @Override
-    public Xor<DriveError, File> createFolder(String remotePath, boolean createIntermediate) {
-        return createIntermediate ? createFolderWithIntermediate(remotePath) : createFolderNoIntermediate(remotePath);
-    }
-
-    @Override
     public Xor<DriveError, Void> deleteFile(String path) {
         return getFile(path).flatMapRight(file ->
             createAuthorizedDriveService()

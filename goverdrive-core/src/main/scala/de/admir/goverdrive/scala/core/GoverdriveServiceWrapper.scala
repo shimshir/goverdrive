@@ -24,8 +24,6 @@ object GoverdriveServiceWrapper {
 
     def getFilePathList(remotePath: String): DriveError Either Seq[File] = gs.getFilePathList(remotePath)
 
-    def createFolder(remotePath: String, createIntermediate: Boolean): DriveError Either File = gs.createFolder(remotePath, createIntermediate)
-
     def deleteFile(remotePath: String): DriveError Either Unit = xor2Either(gs.deleteFile(remotePath)) match {
         case Right(_) => Right(())
         case Left(driveError) => Left(driveError)

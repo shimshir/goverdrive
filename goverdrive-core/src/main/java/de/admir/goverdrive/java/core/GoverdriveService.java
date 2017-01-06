@@ -23,7 +23,5 @@ public interface GoverdriveService {
 
     Xor<DriveError, List<File>> getFilePathList(String remotePath);
 
-    Xor<DriveError, File> createFolder(String remotePath, boolean createIntermediate);
-
     Xor<DriveError, Void> deleteFile(String path);
 }
