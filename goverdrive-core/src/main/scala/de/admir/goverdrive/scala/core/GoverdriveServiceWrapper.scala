@@ -28,6 +28,6 @@ object GoverdriveServiceWrapper {
 
     def deleteFile(remotePath: String): DriveError Either Unit = xor2Either(gs.deleteFile(remotePath)) match {
         case Right(_) => Right(())
-        case _ => _
+        case Left(driveError) => Left(driveError)
     }
 }
