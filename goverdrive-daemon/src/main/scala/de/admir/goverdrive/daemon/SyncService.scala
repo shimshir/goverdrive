@@ -4,6 +4,7 @@ import java.io.{File, FileOutputStream}
 import java.sql.Timestamp
 
 import com.typesafe.scalalogging.StrictLogging
+import de.admir.goverdrive.daemon.SyncResult.{FileSyncs, FolderSyncs, FileDeletes, FolderDeletes}
 import de.admir.goverdrive.daemon.feedback.DaemonFeedback
 import de.admir.goverdrive.scala.core.db.GoverdriveDb
 import de.admir.goverdrive.scala.core.model.{FileMapping, LocalFolder}
@@ -23,33 +24,74 @@ object SyncService extends StrictLogging {
 
     val outOfSyncThreshold: Long = 5.seconds.toMillis
 
-    def sync: Future[(Seq[DaemonFeedback Either FileMapping], Seq[DaemonFeedback Either FileMapping])] = {
+    def deleteDeletedSyncedFiles(deletedSyncedFileMappingsToDelete: Seq[FileMapping],
+                                 deleteFileFunction: FileMapping => DaemonFeedback Either FileMapping): Future[FileSyncs] = {
+        Future.sequence {
+            deletedSyncedFileMappingsToDelete map { fileMapping =>
+                deleteFileFunction(fileMapping) match {
+                    case Left(daemonFeedback) =>
+                        Future.successful(Left(daemonFeedback))
+                    case Right(_) =>
+                        GoverdriveDb.deleteFileMappingFuture(fileMapping.pk.get) map {
+                            case Left(coreFeedback) =>
+                                val errorMessage = s"Error while trying to delete fileMapping: $fileMapping"
+                                logger.error(errorMessage)
+                                Left(DaemonFeedback(errorMessage, coreFeedback))
+                            case Right(0) => Right(fileMapping)
+                            case Right(deletedRows) =>
+                                logger.warn(s"Multiple rows deleted ($deletedRows) for one fileMapping: $fileMapping")
+                                Right(fileMapping)
+                        }
+                }
+            }
+        }
+    }
 
-        /*
-        // TODO: Check for locally deleted files, if (synced) { delete them remotely and remove fileMapping entry }
-        checkForDeletedLocalFiles()
-
-        // TODO: Check if localFolders were deleted locally, if (synced) { delete them remotely and remove localFolder entry }
-        checkForDeletedFoldersOnLocal()
-
-        // TODO: Check for remotely deleted files, if (synced) { delete them locally and remove fileMapping entry }
-        checkForDeletedRemoteFiles()
-
-        // TODO: Check if localFolders were deleted remotely, if (synced) { delete them locally and remove localFolder entry }
-        // checkForDeletedFoldersOnRemote()
-
-        // TODO: Check for files inside localFolders that were added locally and add a fileMapping entry for them
-        checkForAddedOrRemovedLocalFilesInsideFolders()
-
-        // TODO: Check if files inside localFolders were added remotely and add a fileMapping entry for them
-        checkForAddedOrRemovedRemoteFilesInsideFolders()
-        */
-
+    def sync: Future[SyncResult] = {
         GoverdriveDb.getFileMappingsFuture.flatMap(fileMappings => {
             val syncedFileMappings = fileMappings.filter(_.fileId.isDefined)
 
-            val localFileMappingsToDelete = syncedFileMappings.filter(!remoteExists(_))
-            val remoteFileMappingsToDelete = syncedFileMappings.filter(!localExists(_))
+            /**
+              * Check for locally deleted files, if (synced) { delete them remotely and remove fileMapping entry }
+              **/
+            val deletedSyncedLocalFiles: Future[FileDeletes] = deleteDeletedSyncedFiles(
+                syncedFileMappings.filterNot(localExists),
+                fileMapping =>
+                    GoverdriveService.deleteFile(fileMapping.remotePath) match {
+                        case Left(driveError) =>
+                            val errorMsg = s"Error while remotely deleting file, fileMapping: $fileMapping, driveError: $driveError"
+                            logger.error(errorMsg)
+                            Left(DaemonFeedback(errorMsg, driveError))
+                        case _ => Right(fileMapping)
+                    }
+            )
+
+            /**
+              * Check for remotely deleted files, if (synced) { delete them locally and remove fileMapping entry }
+              */
+            val deletedSyncedRemoteFiles: Future[FileDeletes] = deleteDeletedSyncedFiles(
+                syncedFileMappings.filterNot(remoteExists),
+                fileMapping =>
+                    if (new File(fileMapping.localPath).delete())
+                        Right(fileMapping)
+                    else {
+                        val errorMsg = s"Error while locally deleting file, fileMapping: $fileMapping"
+                        logger.error(errorMsg)
+                        Left(DaemonFeedback(errorMsg))
+                    }
+            )
+
+            // TODO: Check if localFolders were deleted locally, if (synced) { delete them remotely and remove localFolder entry }
+            // checkForDeletedFoldersOnLocal()
+
+            // TODO: Check if localFolders were deleted remotely, if (synced) { delete them locally and remove localFolder entry }
+            // checkForDeletedFoldersOnRemote()
+
+            // TODO: Check for files inside localFolders that were added locally and add a fileMapping entry for them
+            // checkForAddedOrRemovedLocalFilesInsideFolders()
+
+            // TODO: Check if files inside localFolders were added remotely and add a fileMapping entry for them
+            // checkForAddedOrRemovedRemoteFilesInsideFolders()
 
             val localToRemoteSyncables = filterLocalToRemoteSyncables(fileMappings)
             val remoteToLocalSyncables = filterRemoteToLocalSyncables(fileMappings)
@@ -57,6 +99,8 @@ object SyncService extends StrictLogging {
                 syncLocalToRemoteResult <- syncLocalToRemoteFuture(localToRemoteSyncables)
                 syncRemoteToLocalResult <- syncRemoteToLocalFuture(remoteToLocalSyncables)
             } yield (syncLocalToRemoteResult, syncRemoteToLocalResult)
+
+            ???
         })
     }
 
