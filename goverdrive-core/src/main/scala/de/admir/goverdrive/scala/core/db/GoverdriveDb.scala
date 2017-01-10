@@ -112,6 +112,8 @@ object GoverdriveDb {
 
     // *** localFolders *** \\
 
+    def getLocalFoldersFuture: Future[Seq[LocalFolder]] = db.run(localFolders.result)
+
     def getLocalFolderFuture(pk: Int): Future[Option[LocalFolder]] = {
         val queryAction = localFolders.filter(_.pk === pk).result.headOption
         db.run(queryAction)
@@ -132,6 +134,14 @@ object GoverdriveDb {
 
     def insertLocalFolder(localFolder: LocalFolder): Throwable Either LocalFolder = catchNonFatal {
         Await.result(insertLocalFolderFuture(localFolder), timeout)
+    }
+
+    def deleteLocalFolderFuture(pk: Int): Future[CoreFeedback Either Int] = {
+        val deleteAction = localFolders.filter(_.pk === pk).delete
+        db.run(deleteAction) map {
+            case 0 => Left(CoreFeedback(s"No localFolder was deleted for pk: $pk"))
+            case affectedRows => Right(affectedRows)
+        }
     }
 
     def initDb(): Unit = {

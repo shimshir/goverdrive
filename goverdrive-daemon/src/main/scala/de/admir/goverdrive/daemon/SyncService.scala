@@ -25,10 +25,10 @@ object SyncService extends StrictLogging {
     val outOfSyncThreshold: Long = 5.seconds.toMillis
 
     def deleteDeletedSyncedFiles(deletedSyncedFileMappingsToDelete: Seq[FileMapping],
-                                 deleteFileFunction: FileMapping => DaemonFeedback Either FileMapping): Future[FileSyncs] = {
+                                 deleteFileAction: FileMapping => DaemonFeedback Either FileMapping): Future[FileSyncs] = {
         Future.sequence {
             deletedSyncedFileMappingsToDelete map { fileMapping =>
-                deleteFileFunction(fileMapping) match {
+                deleteFileAction(fileMapping) match {
                     case Left(daemonFeedback) =>
                         Future.successful(Left(daemonFeedback))
                     case Right(_) =>
@@ -42,6 +42,33 @@ object SyncService extends StrictLogging {
                                 logger.warn(s"Multiple rows deleted ($deletedRows) for one fileMapping: $fileMapping")
                                 Right(fileMapping)
                         }
+                }
+            }
+        }
+    }
+
+    def deleteDeletedSyncedLocalFolders(folderIsDeletedPredicate: LocalFolder => Boolean,
+                                        deleteFolderAction: LocalFolder => DaemonFeedback Either LocalFolder): Future[FolderSyncs] = {
+        GoverdriveDb.getLocalFoldersFuture flatMap { localFolders =>
+            val deletedSyncedLocalFolders: Seq[LocalFolder] = localFolders.filter(_.syncedAt.isDefined).filter(folderIsDeletedPredicate)
+
+            Future.sequence {
+                deletedSyncedLocalFolders map { localFolder =>
+                    deleteFolderAction(localFolder) match {
+                        case Left(daemonFeedback) =>
+                            Future.successful(Left(daemonFeedback))
+                        case Right(_) =>
+                            GoverdriveDb.deleteLocalFolderFuture(localFolder.pk.get) map {
+                                case Left(coreFeedback) =>
+                                    val errorMessage = s"Error while trying to delete localFolder: $localFolder"
+                                    logger.error(errorMessage)
+                                    Left(DaemonFeedback(errorMessage, coreFeedback))
+                                case Right(0) => Right(localFolder)
+                                case Right(deletedRows) =>
+                                    logger.warn(s"Multiple rows deleted ($deletedRows) for one localFolder: $localFolder")
+                                    Right(localFolder)
+                            }
+                    }
                 }
             }
         }
@@ -81,11 +108,25 @@ object SyncService extends StrictLogging {
                     }
             )
 
-            // TODO: Check if localFolders were deleted locally, if (synced) { delete them remotely and remove localFolder entry }
-            // checkForDeletedFoldersOnLocal()
+            /**
+              * Check if localFolders were deleted locally, if (synced) { delete them remotely and remove localFolder entry }
+              */
+            val deletedSyncedLocalLocalFolders: Future[FolderDeletes] = deleteDeletedSyncedLocalFolders(
+                localFolder => !localExists(localFolder.path),
+                localFolder =>
+                    // TODO: Get all fileMappings for the localFolder, delete folder and its files remotely, delete localFolder entry from the DB
+                    ???
+            )
 
-            // TODO: Check if localFolders were deleted remotely, if (synced) { delete them locally and remove localFolder entry }
-            // checkForDeletedFoldersOnRemote()
+            /**
+              * Check if localFolders were deleted remotely, if (synced) { delete them locally and remove localFolder entry }
+              */
+            val deletedSyncedRemoteLocalFolders: Future[FolderDeletes] = deleteDeletedSyncedLocalFolders(
+                localFolder => !remoteExists(localFolder.path),
+                localFolder =>
+                    // TODO: Get all fileMappings for the localFolder, delete folder and its files locally, delete localFolder entry from the DB
+                    ???
+            )
 
             // TODO: Check for files inside localFolders that were added locally and add a fileMapping entry for them
             // checkForAddedOrRemovedLocalFilesInsideFolders()
