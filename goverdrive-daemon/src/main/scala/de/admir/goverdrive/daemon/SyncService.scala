@@ -4,7 +4,7 @@ import java.io.{File, FileOutputStream}
 import java.sql.Timestamp
 
 import com.typesafe.scalalogging.StrictLogging
-import de.admir.goverdrive.daemon.SyncResult.{FileSyncs, FolderSyncs, FileDeletes, FolderDeletes}
+import de.admir.goverdrive.daemon.SyncResult._
 import de.admir.goverdrive.daemon.feedback.DaemonFeedback
 import de.admir.goverdrive.scala.core.db.GoverdriveDb
 import de.admir.goverdrive.scala.core.model.{FileMapping, LocalFolder}
@@ -25,20 +25,21 @@ object SyncService extends StrictLogging {
     val outOfSyncThreshold: Long = 5.seconds.toMillis
 
     def deleteDeletedSyncedFiles(deletedSyncedFileMappingsToDelete: Seq[FileMapping],
-                                 deleteFileAction: FileMapping => DaemonFeedback Either FileMapping): Future[FileSyncs] = {
+                                 deleteFileAction: FileMapping => DaemonFeedback Either FileMapping): Future[FileDeletes] = {
         Future.sequence {
             deletedSyncedFileMappingsToDelete map { fileMapping =>
                 deleteFileAction(fileMapping) match {
                     case Left(daemonFeedback) =>
                         Future.successful(Left(daemonFeedback))
                     case Right(_) =>
-                        GoverdriveDb.deleteFileMappingFuture(fileMapping.pk.get) map {
-                            case Left(coreFeedback) =>
-                                val errorMessage = s"Error while trying to delete fileMapping: $fileMapping"
+                        GoverdriveDb.deleteFileMappingFuture(fileMapping.pk) map {
+                            case 0 =>
+                                val errorMessage = s"Failed to delete fileMapping: $fileMapping"
                                 logger.error(errorMessage)
-                                Left(DaemonFeedback(errorMessage, coreFeedback))
-                            case Right(0) => Right(fileMapping)
-                            case Right(deletedRows) =>
+                                Left(DaemonFeedback(errorMessage))
+                            case 1 =>
+                                Right(fileMapping)
+                            case deletedRows =>
                                 logger.warn(s"Multiple rows deleted ($deletedRows) for one fileMapping: $fileMapping")
                                 Right(fileMapping)
                         }
@@ -48,7 +49,7 @@ object SyncService extends StrictLogging {
     }
 
     def deleteDeletedSyncedLocalFolders(folderIsDeletedPredicate: LocalFolder => Boolean,
-                                        deleteFolderAction: LocalFolder => DaemonFeedback Either LocalFolder): Future[FolderSyncs] = {
+                                        deleteFolderAction: LocalFolder => DaemonFeedback Either LocalFolder): Future[Seq[(FolderDelete, FileDeletes)]] = {
         GoverdriveDb.getLocalFoldersFuture flatMap { localFolders =>
             val deletedSyncedLocalFolders: Seq[LocalFolder] = localFolders.filter(_.syncedAt.isDefined).filter(folderIsDeletedPredicate)
 
@@ -56,21 +57,60 @@ object SyncService extends StrictLogging {
                 deletedSyncedLocalFolders map { localFolder =>
                     deleteFolderAction(localFolder) match {
                         case Left(daemonFeedback) =>
-                            Future.successful(Left(daemonFeedback))
+                            Future.successful((Left(daemonFeedback), Seq()))
                         case Right(_) =>
-                            GoverdriveDb.deleteLocalFolderFuture(localFolder.pk.get) map {
+
+                            // TODO: Remove this, no need for it since the previos tasks already check for deleted files
+                            val fileMappingDeletesFuture: Future[FileDeletes] = GoverdriveDb.getFileMappingsByLocalFolderPkFuture(localFolder.pk) flatMap { fileMappings =>
+                                Future.sequence {
+                                    fileMappings map { fileMapping =>
+                                        GoverdriveDb.deleteFileMappingFuture(fileMapping.pk) map {
+                                            case 0 =>
+                                                val errorMessage = s"Failed to delete fileMapping: $fileMapping"
+                                                logger.error(errorMessage)
+                                                Left(DaemonFeedback(errorMessage))
+                                            case 1 =>
+                                                Right(fileMapping)
+                                            case deletedRows =>
+                                                logger.warn(s"Multiple rows deleted ($deletedRows) for one fileMapping: $fileMapping")
+                                                Right(fileMapping)
+                                        }
+                                    }
+                                }
+
+                            }
+                            // remove
+
+                            val localFolderDeleteFuture: Future[FolderDelete] = GoverdriveDb.deleteLocalFolderFuture(localFolder.pk.get) map {
                                 case Left(coreFeedback) =>
                                     val errorMessage = s"Error while trying to delete localFolder: $localFolder"
                                     logger.error(errorMessage)
                                     Left(DaemonFeedback(errorMessage, coreFeedback))
-                                case Right(0) => Right(localFolder)
+                                case Right(0) =>
+                                    Right(localFolder)
                                 case Right(deletedRows) =>
                                     logger.warn(s"Multiple rows deleted ($deletedRows) for one localFolder: $localFolder")
                                     Right(localFolder)
                             }
+
+                            for {
+                                fileMappingDeletes <- fileMappingDeletesFuture
+                                localFolderDelete <- localFolderDeleteFuture
+                            } yield (localFolderDelete, fileMappingDeletes)
+
                     }
                 }
             }
+        }
+    }
+
+    def deleteFileMappingRemotely(fileMapping: FileMapping): DaemonFeedback Either FileMapping = {
+        GoverdriveService.deleteFile(fileMapping.remotePath) match {
+            case Left(driveError) =>
+                val errorMsg = s"Error while remotely deleting file, fileMapping: $fileMapping, driveError: $driveError"
+                logger.error(errorMsg)
+                Left(DaemonFeedback(errorMsg, driveError))
+            case _ => Right(fileMapping)
         }
     }
 
@@ -83,14 +123,7 @@ object SyncService extends StrictLogging {
               **/
             val deletedSyncedLocalFiles: Future[FileDeletes] = deleteDeletedSyncedFiles(
                 syncedFileMappings.filterNot(localExists),
-                fileMapping =>
-                    GoverdriveService.deleteFile(fileMapping.remotePath) match {
-                        case Left(driveError) =>
-                            val errorMsg = s"Error while remotely deleting file, fileMapping: $fileMapping, driveError: $driveError"
-                            logger.error(errorMsg)
-                            Left(DaemonFeedback(errorMsg, driveError))
-                        case _ => Right(fileMapping)
-                    }
+                deleteFileMappingRemotely
             )
 
             /**
@@ -111,21 +144,36 @@ object SyncService extends StrictLogging {
             /**
               * Check if localFolders were deleted locally, if (synced) { delete them remotely and remove localFolder entry }
               */
-            val deletedSyncedLocalLocalFolders: Future[FolderDeletes] = deleteDeletedSyncedLocalFolders(
+            val deletedSyncedLocalLocalFolders: Future[Seq[(FolderDelete, FileDeletes)]] = deleteDeletedSyncedLocalFolders(
                 localFolder => !localExists(localFolder.path),
-                localFolder =>
-                    // TODO: Get all fileMappings for the localFolder, delete folder and its files remotely, delete localFolder entry from the DB
-                    ???
+                // TODO: Get all fileMappings for the localFolder, delete folder and its files remotely, delete localFolder entry and its fileMapping entries from the DB
+                // TODO: Remove duplicate code
+                localFolder => {
+                    GoverdriveService.deleteFile(localFolder.path) match {
+                        case Left(driveError) =>
+                            val errorMsg = s"Error while remotely deleting folder, localFolder: $localFolder, driveError: $driveError"
+                            logger.error(errorMsg)
+                            Left(DaemonFeedback(errorMsg, driveError))
+                        case _ => Right(localFolder)
+                    }
+                }
             )
 
             /**
               * Check if localFolders were deleted remotely, if (synced) { delete them locally and remove localFolder entry }
               */
-            val deletedSyncedRemoteLocalFolders: Future[FolderDeletes] = deleteDeletedSyncedLocalFolders(
+            val deletedSyncedRemoteLocalFolders: Future[Seq[(FolderDelete, FileDeletes)]] = deleteDeletedSyncedLocalFolders(
                 localFolder => !remoteExists(localFolder.path),
                 localFolder =>
                     // TODO: Get all fileMappings for the localFolder, delete folder and its files locally, delete localFolder entry from the DB
-                    ???
+                    // TODO: Remove duplicate code
+                    if (new File(localFolder.path).delete())
+                        Right(localFolder)
+                    else {
+                        val errorMsg = s"Error while locally deleting folder, localFolder: $localFolder"
+                        logger.error(errorMsg)
+                        Left(DaemonFeedback(errorMsg))
+                    }
             )
 
             // TODO: Check for files inside localFolders that were added locally and add a fileMapping entry for them

@@ -13,8 +13,13 @@ case class SyncResult(deletedLocalFiles: FileSyncs,
 }
 
 object SyncResult {
-    type FileSyncs = Seq[DaemonFeedback Either FileMapping]
+    type FileSync = DaemonFeedback Either FileMapping
+    type FileSyncs = Seq[FileSync]
+    type FileDelete = FileSync
     type FileDeletes = FileSyncs
-    type FolderSyncs = Seq[DaemonFeedback Either LocalFolder]
+
+    type FolderSync = DaemonFeedback Either LocalFolder
+    type FolderSyncs = Seq[FolderSync]
+    type FolderDelete = FolderSync
     type FolderDeletes = FolderSyncs
 }

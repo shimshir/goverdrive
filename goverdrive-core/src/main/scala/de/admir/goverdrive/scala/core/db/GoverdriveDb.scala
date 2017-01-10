@@ -76,6 +76,15 @@ object GoverdriveDb {
         Await.result(getFileMappingsFuture, timeout)
     }
 
+    def getFileMappingsByLocalFolderPkFuture(localFolderPk: Option[Int]): Future[Seq[FileMapping]] = {
+        val queryAction = fileMappings.filter(_.localFolderPk === localFolderPk).result
+        db.run(queryAction)
+    }
+
+    def getFileMappingsByLocalFolderPk(pk: Option[Int]): Throwable Either Seq[FileMapping] = catchNonFatal {
+        Await.result(getFileMappingsByLocalFolderPkFuture(pk), timeout)
+    }
+
     def updateFileMappingFuture(fileMapping: FileMapping): Future[Option[FileMapping]] = {
         val updateAction = fileMappings.filter(_.pk === fileMapping.pk) update fileMapping
         db.run(updateAction).map {
@@ -93,21 +102,13 @@ object GoverdriveDb {
         Await.result(insertFileMappingFuture(fileMapping), timeout)
     }
 
-    def deleteFileMappingFuture(pk: Int): Future[CoreFeedback Either Int] = {
+    def deleteFileMappingFuture(pk: Option[Int]): Future[Int] = {
         val deleteAction = fileMappings.filter(_.pk === pk).delete
-        db.run(deleteAction) map {
-            case 0 => Left(CoreFeedback(s"No fileMapping was deleted for pk: $pk"))
-            case affectedRows => Right(affectedRows)
-        }
+        db.run(deleteAction)
     }
 
-    def deleteFileMapping(pk: Int): CoreFeedback Either Int = {
-        catchNonFatal {
-            Await.result(deleteFileMappingFuture(pk), timeout)
-        } match {
-            case Left(t) => Left(CoreFeedback(s"Error while trying to delete fileMapping, pk: $pk", t))
-            case Right(result) => result
-        }
+    def deleteFileMapping(pk: Option[Int]): Throwable Either Int = catchNonFatal {
+        Await.result(deleteFileMappingFuture(pk), timeout)
     }
 
     // *** localFolders *** \\
@@ -115,7 +116,11 @@ object GoverdriveDb {
     def getLocalFoldersFuture: Future[Seq[LocalFolder]] = db.run(localFolders.result)
 
     def getLocalFolderFuture(pk: Int): Future[Option[LocalFolder]] = {
-        val queryAction = localFolders.filter(_.pk === pk).result.headOption
+        getLocalFolderFuture(Some(pk)).map(_.headOption)
+    }
+
+    def getLocalFolderFuture(pk: Option[Int]): Future[Seq[LocalFolder]] = {
+        val queryAction = localFolders.filter(_.pk === pk).result
         db.run(queryAction)
     }
 
