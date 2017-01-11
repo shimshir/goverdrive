@@ -4,7 +4,7 @@ import java.io.{File, FileOutputStream}
 import java.sql.Timestamp
 
 import com.typesafe.scalalogging.StrictLogging
-import de.admir.goverdrive.daemon.SyncResult._
+import de.admir.goverdrive.daemon.SyncResult.{FileSyncs, _}
 import de.admir.goverdrive.daemon.feedback.DaemonFeedback
 import de.admir.goverdrive.scala.core.db.GoverdriveDb
 import de.admir.goverdrive.scala.core.model.{FileMapping, FolderMapping}
@@ -88,6 +88,10 @@ object SyncService extends StrictLogging {
         }
     }
 
+    def syncAddedFilesToFolders(): Future[FileSyncs] = {
+        ???
+    }
+
     def sync: Future[SyncResult] = {
         GoverdriveDb.getFileMappingsFuture.flatMap(fileMappings => {
             val syncedFileMappings = fileMappings.filter(_.fileId.isDefined)
@@ -156,10 +160,10 @@ object SyncService extends StrictLogging {
             )
 
             // TODO: Check for files inside folderMappings that were added locally and add a fileMapping entry for them
-            // checkForAddedOrRemovedLocalFilesInsideFolders()
+            val newlyAddedFilesToRemoteFoldersFuture: Future[FileSyncs] = syncAddedFilesToFolders()
 
             // TODO: Check if files inside folderMappings were added remotely and add a fileMapping entry for them
-            // checkForAddedOrRemovedRemoteFilesInsideFolders()
+            val newlyAddedFilesToLocalFoldersFuture: Future[FileSyncs] = syncAddedFilesToFolders()
 
             val syncedToRemoteFilesFuture: Future[FileSyncs] = syncLocalToRemoteFuture(filterLocalToRemoteSyncables(fileMappings))
 
