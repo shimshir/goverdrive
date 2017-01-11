@@ -23,6 +23,9 @@ dependencies {
     compile group: 'com.typesafe.scala-logging', name: 'scala-logging_2.11', version: '3.5.0'
     compile group: 'net.java.truecommons', name: 'truecommons-shed', version: '2.5.0'
 
+    compile group: 'com.github.scala-incubator.io', name: 'scala-io-core_2.11', version: '0.4.3-1'
+    compile group: 'com.github.scala-incubator.io', name: 'scala-io-file_2.11', version: '0.4.3-1'
+
     runtime group: 'org.xerial', name: 'sqlite-jdbc', version: '3.15.1'
 
     compileOnly group: 'org.projectlombok', name: 'lombok', version: '1.16.12'

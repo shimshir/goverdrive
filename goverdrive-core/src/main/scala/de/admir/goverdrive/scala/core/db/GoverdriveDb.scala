@@ -134,12 +134,9 @@ object GoverdriveDb {
         Await.result(insertFolderMappingFuture(folderMapping), timeout)
     }
 
-    def deleteFolderMappingFuture(pk: Int): Future[CoreFeedback Either Int] = {
+    def deleteFolderMappingFuture(pk: Int): Future[Int] = {
         val deleteAction = folderMappings.filter(_.pk === pk).delete
-        db.run(deleteAction) map {
-            case 0 => Left(CoreFeedback(s"No folderMapping was deleted for pk: $pk"))
-            case affectedRows => Right(affectedRows)
-        }
+        db.run(deleteAction)
     }
 
     def initDb(): Unit = {
