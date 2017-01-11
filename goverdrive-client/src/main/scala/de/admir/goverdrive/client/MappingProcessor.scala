@@ -7,7 +7,7 @@ import de.admir.goverdrive.client.feedback.ClientFeedback
 import de.admir.goverdrive.java.core.util.SystemUtils
 import de.admir.goverdrive.scala.core.MappingService._
 import de.admir.goverdrive.scala.core.db.GoverdriveDb
-import de.admir.goverdrive.scala.core.model.{FileMapping, LocalFolder}
+import de.admir.goverdrive.scala.core.model.{FileMapping, FolderMapping}
 import de.admir.goverdrive.scala.core.util.CoreUtils
 import de.admir.goverdrive.scala.core.util.FileType._
 import de.admir.goverdrive.scala.core.util.implicits._
@@ -72,20 +72,20 @@ object MappingProcessor extends StrictLogging {
     import FolderSourceEnum._
 
     private def insertFolderMapping(localPath: String, remotePath: String, source: FolderSourceEnum): Seq[ClientFeedback Either FileMapping] = {
-        GoverdriveDb.insertLocalFolder(LocalFolder(path = localPath)) match {
+        GoverdriveDb.insertFolderMapping(FolderMapping(localPath = localPath, remotePath = remotePath)) match {
             case Left(t) =>
                 Seq(Left(ClientFeedback("Error while inserting local folder", t)))
-            case Right(localFolder) => source match {
+            case Right(folderMapping) => source match {
                 case LOCAL =>
-                    insertFolderMappingForLocal(localPath, remotePath, localFolder.pk)
+                    insertFolderMappingForLocal(localPath, remotePath, folderMapping.pk)
                 case REMOTE =>
-                    insertFolderMappingForRemote(localPath, remotePath, localFolder.pk)
+                    insertFolderMappingForRemote(localPath, remotePath, folderMapping.pk)
             }
         }
     }
 
 
-    private def insertFolderMappingForLocal(localPath: String, remotePath: String, localFolderPk: Option[Int]): Seq[ClientFeedback Either FileMapping] = {
+    private def insertFolderMappingForLocal(localPath: String, remotePath: String, folderMappingPk: Option[Int]): Seq[ClientFeedback Either FileMapping] = {
         val adjustedLocalPath = new File(localPath).getAbsolutePath
 
         CoreUtils.getLocalFileTree(adjustedLocalPath) match {
@@ -95,12 +95,12 @@ object MappingProcessor extends StrictLogging {
                 files filter (!_.isDirectory) map { file =>
                     val relativeLocalPath = file.getAbsolutePath.replaceFirst(Pattern.quote(adjustedLocalPath), SystemUtils.EMPTY_STRING)
                     val absoluteRemotePath = remotePath + relativeLocalPath
-                    insertMapping(file.getAbsolutePath, absoluteRemotePath.replaceAll("\\\\", "/") /*windows, what can you do*/ , localFolderPk)
+                    insertMapping(file.getAbsolutePath, absoluteRemotePath.replaceAll("\\\\", "/") /*windows, what can you do*/ , folderMappingPk)
                 }
         }
     }
 
-    private def insertFolderMappingForRemote(localPath: String, remotePath: String, localFolderPk: Option[Int]): Seq[ClientFeedback Either FileMapping] = {
+    private def insertFolderMappingForRemote(localPath: String, remotePath: String, folderMappingPk: Option[Int]): Seq[ClientFeedback Either FileMapping] = {
         CoreUtils.getRemoteFileTree(remotePath) match {
             case Left(coreFeedback) =>
                 Seq(Left(ClientFeedback("Error while walking remote file tree", coreFeedback)))
@@ -108,17 +108,17 @@ object MappingProcessor extends StrictLogging {
                 files filter (!_.isDirectory) map { file: GFile =>
                     val relativeRemotePath = file.getAbsolutePath.replaceFirst(remotePath, SystemUtils.EMPTY_STRING)
                     val absoluteLocalPath = localPath + relativeRemotePath
-                    insertMapping(absoluteLocalPath, file.getAbsolutePath, localFolderPk)
+                    insertMapping(absoluteLocalPath, file.getAbsolutePath, folderMappingPk)
                 }
         }
     }
 
-    private def insertMapping(localPath: String, remotePath: String, localFolderPk: Option[Int] = None): ClientFeedback Either FileMapping = {
+    private def insertMapping(localPath: String, remotePath: String, folderMappingPk: Option[Int] = None): ClientFeedback Either FileMapping = {
         GoverdriveDb.insertFileMapping(
             FileMapping(
                 localPath = localPath,
                 remotePath = remotePath,
-                localFolderPk = localFolderPk
+                folderMappingPk = folderMappingPk
             )
         ) match {
             case Right(fileMapping) =>

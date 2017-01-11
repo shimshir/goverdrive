@@ -7,7 +7,7 @@ import com.typesafe.scalalogging.StrictLogging
 import de.admir.goverdrive.daemon.SyncResult._
 import de.admir.goverdrive.daemon.feedback.DaemonFeedback
 import de.admir.goverdrive.scala.core.db.GoverdriveDb
-import de.admir.goverdrive.scala.core.model.{FileMapping, LocalFolder}
+import de.admir.goverdrive.scala.core.model.{FileMapping, FolderMapping}
 import de.admir.goverdrive.scala.core.{GoverdriveServiceWrapper => GoverdriveService}
 import net.java.truecommons.shed.ResourceLoan._
 
@@ -48,29 +48,29 @@ object SyncService extends StrictLogging {
         }
     }
 
-    def deleteDeletedSyncedLocalFolders(folderIsDeletedPredicate: LocalFolder => Boolean,
-                                        deleteFolderAction: LocalFolder => DaemonFeedback Either LocalFolder): Future[FolderDeletes] = {
-        GoverdriveDb.getLocalFoldersFuture flatMap { localFolders =>
-            val deletedSyncedLocalFolders: Seq[LocalFolder] = localFolders.filter(_.syncedAt.isDefined).filter(folderIsDeletedPredicate)
+    def deleteDeletedSyncedFolderMappings(folderIsDeletedPredicate: FolderMapping => Boolean,
+                                        deleteFolderAction: FolderMapping => DaemonFeedback Either FolderMapping): Future[FolderDeletes] = {
+        GoverdriveDb.getFolderMappingsFuture flatMap { folderMappings =>
+            val deletedSyncedFolderMappings: Seq[FolderMapping] = folderMappings.filter(_.syncedAt.isDefined).filter(folderIsDeletedPredicate)
 
             Future.sequence {
-                deletedSyncedLocalFolders map { localFolder =>
-                    deleteFolderAction(localFolder) match {
+                deletedSyncedFolderMappings map { folderMapping =>
+                    deleteFolderAction(folderMapping) match {
                         case Left(daemonFeedback) =>
                             Future.successful(Left(daemonFeedback))
                         case Right(_) =>
-                            val localFolderDeleteFuture: Future[FolderDelete] = GoverdriveDb.deleteLocalFolderFuture(localFolder.pk.get) map {
+                            val folderMappingDeleteFuture: Future[FolderDelete] = GoverdriveDb.deleteFolderMappingFuture(folderMapping.pk.get) map {
                                 case Left(coreFeedback) =>
-                                    val errorMessage = s"Error while trying to delete localFolder: $localFolder"
+                                    val errorMessage = s"Error while trying to delete folderMapping: $folderMapping"
                                     logger.error(errorMessage)
                                     Left(DaemonFeedback(errorMessage, coreFeedback))
                                 case Right(0) =>
-                                    Right(localFolder)
+                                    Right(folderMapping)
                                 case Right(deletedRows) =>
-                                    logger.warn(s"Multiple rows deleted ($deletedRows) for one localFolder: $localFolder")
-                                    Right(localFolder)
+                                    logger.warn(s"Multiple rows deleted ($deletedRows) for one folderMapping: $folderMapping")
+                                    Right(folderMapping)
                             }
-                            localFolderDeleteFuture
+                            folderMappingDeleteFuture
                     }
                 }
             }
@@ -115,48 +115,48 @@ object SyncService extends StrictLogging {
             )
 
             /**
-              * Check if localFolders were deleted locally, if (synced) { delete them remotely and remove localFolder entry }
+              * Check if folderMappings were deleted locally, if (synced) { delete them remotely and remove folderMapping entry }
               */
-            val deletedSyncedLocalLocalFoldersFuture: Future[FolderDeletes] = deleteDeletedSyncedLocalFolders(
-                localFolder => !localExists(localFolder.path),
+            val deletedSyncedLocalFolderMappingsFuture: Future[FolderDeletes] = deleteDeletedSyncedFolderMappings(
+                folderMapping => !localExists(folderMapping.localPath),
                 /**
-                  * Get all fileMappings for the localFolder, delete folder and its files remotely, delete localFolder entry and its fileMapping entries from the DB
+                  * Get all fileMappings for the folderMapping, delete folder and its files remotely, delete folderMapping entry and its fileMapping entries from the DB
                   */
-                localFolder => {
-                    GoverdriveService.deleteFile(localFolder.path) match {
+                folderMapping => {
+                    GoverdriveService.deleteFile(folderMapping.localPath) match {
                         case Left(driveError) =>
-                            val errorMsg = s"Error while remotely deleting folder, localFolder: $localFolder, driveError: $driveError"
+                            val errorMsg = s"Error while remotely deleting folder, folderMapping: $folderMapping, driveError: $driveError"
                             logger.error(errorMsg)
                             Left(DaemonFeedback(errorMsg, driveError))
-                        case _ => Right(localFolder)
+                        case _ => Right(folderMapping)
                     }
                 }
             )
 
             /**
-              * Check if localFolders were deleted remotely, if (synced) { delete them locally and remove localFolder entry }
+              * Check if folderMappings were deleted remotely, if (synced) { delete them locally and remove folderMapping entry }
               */
-            val deletedSyncedRemoteLocalFoldersFuture: Future[FolderDeletes] = deleteDeletedSyncedLocalFolders(
+            val deletedSyncedRemoteFolderMappingsFuture: Future[FolderDeletes] = deleteDeletedSyncedFolderMappings(
                 // FIXME: This is wrong, remote folders don't have the same path as local folders
-                localFolder => !remoteExists(localFolder.path),
-                localFolder =>
+                folderMapping => !remoteExists(folderMapping.localPath),
+                folderMapping =>
                     /**
-                      * Get all fileMappings for the localFolder, delete folder and its files locally, delete localFolder entry from the DB
+                      * Get all fileMappings for the folderMapping, delete folder and its files locally, delete folderMapping entry from the DB
                       */
                     // TODO: Use another way to delete a directory
-                    if (new File(localFolder.path).delete())
-                        Right(localFolder)
+                    if (new File(folderMapping.localPath).delete())
+                        Right(folderMapping)
                     else {
-                        val errorMsg = s"Error while locally deleting folder, localFolder: $localFolder"
+                        val errorMsg = s"Error while locally deleting folder, folderMapping: $folderMapping"
                         logger.error(errorMsg)
                         Left(DaemonFeedback(errorMsg))
                     }
             )
 
-            // TODO: Check for files inside localFolders that were added locally and add a fileMapping entry for them
+            // TODO: Check for files inside folderMappings that were added locally and add a fileMapping entry for them
             // checkForAddedOrRemovedLocalFilesInsideFolders()
 
-            // TODO: Check if files inside localFolders were added remotely and add a fileMapping entry for them
+            // TODO: Check if files inside folderMappings were added remotely and add a fileMapping entry for them
             // checkForAddedOrRemovedRemoteFilesInsideFolders()
 
             val syncedToRemoteFilesFuture: Future[FileSyncs] = syncLocalToRemoteFuture(filterLocalToRemoteSyncables(fileMappings))
@@ -165,16 +165,16 @@ object SyncService extends StrictLogging {
             for {
                 deletedLocalFiles <- deletedLocalFilesFuture
                 deletedRemoteFiles <- deletedRemoteFilesFuture
-                deletedSyncedLocalLocalFolders <- deletedSyncedLocalLocalFoldersFuture
-                deletedSyncedRemoteLocalFolders <- deletedSyncedRemoteLocalFoldersFuture
+                deletedSyncedLocalFolderMappings <- deletedSyncedLocalFolderMappingsFuture
+                deletedSyncedRemoteFolderMappings <- deletedSyncedRemoteFolderMappingsFuture
                 syncedToRemoteFiles <- syncedToRemoteFilesFuture
                 syncedToLocalFiles <- syncedToLocalFilesFuture
 
             } yield SyncResult(
                 deletedLocalFiles,
                 deletedRemoteFiles,
-                deletedSyncedLocalLocalFolders,
-                deletedSyncedRemoteLocalFolders,
+                deletedSyncedLocalFolderMappings,
+                deletedSyncedRemoteFolderMappings,
                 syncedToRemoteFiles,
                 syncedToLocalFiles
             )
@@ -197,11 +197,11 @@ object SyncService extends StrictLogging {
         )
     }
 
-    def updateFileMappingAndOptionallyLocalFolder(fileMapping: FileMapping, driveFileId: String): Future[Either[DaemonFeedback, FileMapping]] = {
+    def updateFileMappingAndOptionallyFolderMapping(fileMapping: FileMapping, driveFileId: String): Future[Either[DaemonFeedback, FileMapping]] = {
         val timestamp = new Timestamp(System.currentTimeMillis)
-        val localFolderUpdateFuture: Future[Option[Option[LocalFolder]]] = fileMapping.localFolderPk.map(localFolderPk =>
-            GoverdriveDb.getLocalFolderFuture(localFolderPk).flatMap {
-                case Some(localFolder) => GoverdriveDb.updateLocalFolderFuture(localFolder.copy(syncedAt = Some(timestamp)))
+        val folderMappingUpdateFuture: Future[Option[Option[FolderMapping]]] = fileMapping.folderMappingPk.map(folderMappingPk =>
+            GoverdriveDb.getFolderMappingFuture(folderMappingPk).flatMap {
+                case Some(folderMapping) => GoverdriveDb.updateFolderMappingFuture(folderMapping.copy(syncedAt = Some(timestamp)))
                 case None => Future.successful(None)
             }
         ) match {
@@ -211,10 +211,10 @@ object SyncService extends StrictLogging {
 
         val fileMappingUpdateFuture: Future[Option[FileMapping]] = GoverdriveDb.updateFileMappingFuture(fileMapping.copy(fileId = Some(driveFileId), syncedAt = Some(timestamp)))
 
-        val updatesResultFuture: Future[(Option[Option[LocalFolder]], Option[FileMapping])] = for {
-            localFolderUpdate <- localFolderUpdateFuture
+        val updatesResultFuture: Future[(Option[Option[FolderMapping]], Option[FileMapping])] = for {
+            folderMappingUpdate <- folderMappingUpdateFuture
             fileMappingUpdate <- fileMappingUpdateFuture
-        } yield (localFolderUpdate, fileMappingUpdate)
+        } yield (folderMappingUpdate, fileMappingUpdate)
 
         updatesResultFuture.map {
             case (None, Some(updatedFileMapping)) =>
@@ -223,10 +223,10 @@ object SyncService extends StrictLogging {
                 Right(updatedFileMapping)
             case (Some(None), Some(updatedFileMapping)) =>
                 logger.info(s"Successfully synced and updated fileMapping: $updatedFileMapping")
-                logger.warn(s"Could not find localFolder entry for fileMapping: $fileMapping")
+                logger.warn(s"Could not find folderMapping entry for fileMapping: $fileMapping")
                 Right(updatedFileMapping)
-            case (Some(Some(updatedLocalFolder)), Some(updatedFileMapping)) =>
-                logger.info(s"Successfully synced and updated fileMapping: $updatedFileMapping and updated localFolder: $updatedLocalFolder")
+            case (Some(Some(updatedFolderMapping)), Some(updatedFileMapping)) =>
+                logger.info(s"Successfully synced and updated fileMapping: $updatedFileMapping and updated folderMapping: $updatedFolderMapping")
                 Right(updatedFileMapping)
             case _ =>
                 val errorMessage = s"Could upload data but not update fileMapping: $fileMapping"
@@ -243,7 +243,7 @@ object SyncService extends StrictLogging {
                         logger.error(error.toString)
                         Future.successful(Left(DaemonFeedback(s"Error while syncing file to remote, fileMapping: $fileMapping", error)))
                     case Right(driveFile) =>
-                        updateFileMappingAndOptionallyLocalFolder(fileMapping, driveFile.getId)
+                        updateFileMappingAndOptionallyFolderMapping(fileMapping, driveFile.getId)
                 }
             }
         }
@@ -271,7 +271,7 @@ object SyncService extends StrictLogging {
                                                 case Failure(t) =>
                                                     Future.successful(Left(DaemonFeedback(t)))
                                                 case Success(_) =>
-                                                    updateFileMappingAndOptionallyLocalFolder(fileMapping, driveFile.getId)
+                                                    updateFileMappingAndOptionallyFolderMapping(fileMapping, driveFile.getId)
                                             }
                                         }
                                     } match {

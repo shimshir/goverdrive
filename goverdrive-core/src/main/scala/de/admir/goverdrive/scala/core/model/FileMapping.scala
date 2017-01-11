@@ -9,7 +9,7 @@ case class FileMapping(pk: Option[Int] = None,
                        localPath: String,
                        remotePath: String,
                        syncedAt: Option[Timestamp] = None,
-                       localFolderPk: Option[Int] = None) {
+                       folderMappingPk: Option[Int] = None) {
 
     override def toString: String = CaseClassBeautifier.nice(this)
 }
