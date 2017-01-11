@@ -14,7 +14,7 @@ import net.java.truecommons.shed.ResourceLoan._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
-import de.admir.goverdrive.scala.core.MappingService._
+import de.admir.goverdrive.scala.core.MappingUtils._
 
 import scala.concurrent.duration._
 import scala.language.postfixOps

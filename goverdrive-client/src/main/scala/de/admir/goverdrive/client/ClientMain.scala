@@ -1,6 +1,7 @@
 package de.admir.goverdrive.client
 
 import com.typesafe.scalalogging.StrictLogging
+import de.admir.goverdrive.scala.core.MappingProcessor
 import de.admir.goverdrive.scala.core.db.GoverdriveDb
 
 

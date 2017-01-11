@@ -9,7 +9,7 @@ import de.admir.goverdrive.scala.core.model.FileMapping
 import de.admir.goverdrive.scala.core.util.FileType._
 
 
-object MappingService extends StrictLogging {
+object MappingUtils extends StrictLogging {
 
     def getLocalFileType(path: String): CoreFeedback Either FileType = {
         val file = new File(path)
