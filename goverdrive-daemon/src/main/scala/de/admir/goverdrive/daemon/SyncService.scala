@@ -13,8 +13,11 @@ import net.java.truecommons.shed.ResourceLoan._
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Left, Right, Success, Try}
 import de.admir.goverdrive.scala.core.MappingUtils._
+import java.io.{File => JFile}
+import com.google.api.services.drive.model.{File => GFile}
+import de.admir.goverdrive.scala.core.util.implicits.FileLike
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
@@ -88,8 +91,71 @@ object SyncService extends StrictLogging {
         }
     }
 
-    def syncAddedFilesToFolders(): Future[FileSyncs] = {
-        ???
+    def syncAddedFilesToFolders[F](realFilesExtractor: FolderMapping => DaemonFeedback Either Seq[F],
+                                   knownPathsExtractor: FolderMapping => Future[Seq[String]],
+                                   fileMappingWriter: (FolderMapping, String) => Future[FileMapping])
+                                  (implicit ev: FileLike[F]): Future[FileSyncs] = {
+        GoverdriveDb.getFolderMappingsFuture flatMap { folderMappings =>
+            val realFilesInsideFolders: Map[FolderMapping, Either[DaemonFeedback, Seq[F]]] = folderMappings.map(fiMapp => (fiMapp, realFilesExtractor(fiMapp))).toMap
+
+            val realPathsInsideFoldersMap: Map[FolderMapping, DaemonFeedback Either Set[String]] = realFilesInsideFolders map { case (foMapp, filesEither) =>
+                (
+                    foMapp,
+                    filesEither match {
+                        case Left(daemonFeedback) => Left(daemonFeedback)
+                        case Right(fileLikes) => Right(fileLikes.map(ev.path).toSet)
+                    }
+                )
+            }
+
+            val knownPathsInsideFoldersMap: Map[FolderMapping, Future[Set[String]]] = folderMappings.map(fiMapp => (fiMapp, knownPathsExtractor(fiMapp).map(_.toSet))).toMap
+
+            val newPathsMap: Map[FolderMapping, DaemonFeedback Either Future[Set[String]]] =
+                realPathsInsideFoldersMap.keys.map(foM =>
+                    (
+                        foM,
+                        realPathsInsideFoldersMap(foM) match {
+                            case Left(daemonFeedback) => Left(daemonFeedback)
+                            case Right(realPaths) =>
+                                Right(knownPathsInsideFoldersMap(foM).map(knownPaths => realPaths -- knownPaths))
+                        }
+                    )
+                ).toMap
+
+            // TODO: Finish this
+            val ert: Future[Seq[DaemonFeedback Either Set[FileMapping]]] = Future.sequence {
+                newPathsMap.toSeq map {
+                    case (_, Left(daemonFeedback)) =>
+                        Future.successful(Left(daemonFeedback))
+                    case (folderMapping: FolderMapping, Right(newPathsFuture: Future[Set[String]])) => {
+                        newPathsFuture.flatMap(newPaths =>
+                            Future.sequence {
+                                newPaths.map(newPath => fileMappingWriter(folderMapping, newPath))
+                            }
+                        ).map(Right(_))
+                    }
+                }
+            }
+            ert map {_.map {
+                    case Left(daemonFeedback) => Left(daemonFeedback)
+                    case Right(fileMappings) => Right(fileMappings)
+                }
+            }
+            ???
+        }
+    }
+
+    def realRemoteFilesExtractor[F](folderMapping: FolderMapping)(implicit ev: FileLike[F]): DaemonFeedback Either Seq[F] = {
+        GoverdriveService.getFile(folderMapping.remotePath) match {
+            case Left(driveError) =>
+                Left(DaemonFeedback(s"Error while getting remote folder: ${folderMapping.remotePath}", driveError))
+            case Right(folder: F) =>
+                ev.fileTree(folder) match {
+                    case Left(coreFeedback) =>
+                        Left(DaemonFeedback(s"Error while reading fileTree for remote folder: $folder", coreFeedback))
+                    case Right(fileLikes) => Right(fileLikes)
+                }
+        }
     }
 
     def sync: Future[SyncResult] = {
@@ -153,14 +219,18 @@ object SyncService extends StrictLogging {
                             val errorMsg = s"Error while locally deleting folder, folderMapping: $folderMapping"
                             logger.error(errorMsg, t)
                             Left(DaemonFeedback(errorMsg, t))
-                            // TODO: Should be handled in some way, at least log on unexpected return
+                        // TODO: Should be handled in some way, at least log on unexpected return
                         case Success((deletedCount, remainingCount)) =>
                             Right(folderMapping)
                     }
             )
 
             // TODO: Check for files inside folderMappings that were added locally and add a fileMapping entry for them
-            val newlyAddedFilesToRemoteFoldersFuture: Future[FileSyncs] = syncAddedFilesToFolders()
+            val newlyAddedFilesToRemoteFoldersFuture: Future[FileSyncs] = syncAddedFilesToFolders(
+                realFilesExtractor = realRemoteFilesExtractor[GFile],
+                knownPathsExtractor = ???,
+                fileMappingWriter = ???
+            )
 
             // TODO: Check if files inside folderMappings were added remotely and add a fileMapping entry for them
             val newlyAddedFilesToLocalFoldersFuture: Future[FileSyncs] = syncAddedFilesToFolders()

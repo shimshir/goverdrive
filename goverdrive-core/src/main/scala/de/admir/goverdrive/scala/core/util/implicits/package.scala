@@ -1,16 +1,18 @@
 package de.admir.goverdrive.scala.core.util
 
-import java.sql.Timestamp
-
+import java.io.{File => JFile}
 import com.google.api.services.drive.model.{File => GFile}
 import com.typesafe.scalalogging.LazyLogging
 import de.admir.goverdrive.java.core.util.SystemUtils
+import de.admir.goverdrive.scala.core.feedback.CoreFeedback
 import de.admir.goverdrive.scala.core.{GoverdriveServiceWrapper => GoverdriveService}
+
+import scala.util.{Failure, Success, Try}
 
 
 package object implicits extends LazyLogging {
 
-    implicit class GFileImprovements(val file: GFile) {
+    private implicit class GFileImprovements(val file: GFile) {
         def isDirectory: Boolean = file.getMimeType == "application/vnd.google-apps.folder"
 
         def getAbsolutePath: String = {
@@ -48,25 +50,42 @@ package object implicits extends LazyLogging {
         }
     }
 
-    implicit class TimestampOrdering(a: Timestamp) {
-        def compare(b: Timestamp): Int = a.getTime compare b.getTime
+    trait FileLike[T] {
+        def fileTree(file: T): CoreFeedback Either Seq[T]
+
+        def path(file: T): String
     }
 
-    /*
-    implicit class OptionImprovements[A <: Ordered[A]](thisOption: Option[A]) {
-        def isGreaterThan(option: Option[A]): Boolean = {
-            (thisOption, option) match {
-                case (Some(thisValue), Some(value)) =>
-                    thisValue > value
-                case (Some(_), None) =>
-                    true
-                case (None, Some(_)) =>
-                    false
-                case (None, None) =>
-                    false
+    object FileLike {
+
+        implicit object FileLikeJFile extends FileLike[JFile] {
+            override def fileTree(file: JFile): CoreFeedback Either Seq[JFile] = {
+                def innerFileTree(file: JFile): Seq[JFile] =
+                    file :: (if (file.isDirectory) file.listFiles().toList.flatMap(innerFileTree) else Nil)
+
+                Try(innerFileTree(file)) match {
+                    case Failure(t) => Left(CoreFeedback(t))
+                    case Success(files) => Right(files)
+                }
             }
+
+            override def path(file: JFile): String = file.getAbsolutePath
         }
+
+        implicit object FileLikeGFile extends FileLike[GFile] {
+            override def fileTree(file: GFile): CoreFeedback Either Seq[GFile] = {
+                def innerFileTree(file: GFile): Seq[GFile] =
+                    file :: (if (file.isDirectory) file.listFiles().toList.flatMap(innerFileTree) else Nil)
+
+                Try(innerFileTree(file)) match {
+                    case Failure(t) => Left(CoreFeedback(t))
+                    case Success(files) => Right(files)
+                }
+            }
+
+            override def path(file: GFile): String = file.getAbsolutePath
+        }
+
     }
-    */
 
 }

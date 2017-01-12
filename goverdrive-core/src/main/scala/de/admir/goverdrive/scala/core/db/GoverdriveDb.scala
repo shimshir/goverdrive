@@ -4,7 +4,6 @@ import java.io.File
 import java.sql.Timestamp
 
 import de.admir.goverdrive.java.core.config.CoreConfig
-import de.admir.goverdrive.scala.core.feedback.CoreFeedback
 import slick.driver.SQLiteDriver.api._
 
 import scala.concurrent.{Await, Future}
