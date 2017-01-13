@@ -93,7 +93,7 @@ object SyncService extends StrictLogging {
     }
 
     def syncAddedFilesToFolders[F](realFilesExtractor: FolderMapping => Seq[DaemonFeedback Either F],
-                                   knownPathsExtractor: FolderMapping => Future[Seq[String]],
+                                   correctPathExtractor: FileMapping => String,
                                    fileMappingSyncer: (FolderMapping, String) => Future[FileMapping])
                                   (implicit ev: FileLike[F]): Future[FileSyncs] = {
         GoverdriveDb.getFolderMappingsFuture flatMap { folderMappings =>
@@ -109,10 +109,12 @@ object SyncService extends StrictLogging {
                 )
             }
 
-            val knownPathsInsideFoldersMapFuture: Future[Map[FolderMapping, Seq[DaemonFeedback Either String]]] =
+            val knownPathsInsideFoldersMapFuture: Future[Map[FolderMapping, Seq[Either[DaemonFeedback, String]]]] =
                 Future.sequence {
                     folderMappings map { foMapp =>
-                        knownPathsExtractor(foMapp).map(knownPaths => (foMapp, knownPaths.map(Right(_))))
+                        GoverdriveDb.getFileMappingsByFolderMappingPkFuture(foMapp.pk) map { fileMappings =>
+                            (foMapp, fileMappings.map(correctPathExtractor).map(Right(_)))
+                        }
                     }
                 }.map(_.toMap)
 
@@ -220,8 +222,7 @@ object SyncService extends StrictLogging {
             // TODO: Check for files inside folderMappings that were added locally and add a fileMapping entry for them
             val newlyAddedFilesToRemoteFoldersFuture: Future[FileSyncs] = syncAddedFilesToFolders(
                 realFilesExtractor = realFilesExtractor[GFile],
-                // TODO: Generify [2]
-                knownPathsExtractor = folderMapping => GoverdriveDb.getFileMappingsByFolderMappingPkFuture(folderMapping.pk).map(_.map(_.remotePath)),
+                correctPathExtractor = _.remotePath,
                 fileMappingSyncer = (folderMapping, path) => {
                     //Future[FileMapping]
                     ???
@@ -231,8 +232,7 @@ object SyncService extends StrictLogging {
             // TODO: Check if files inside folderMappings were added remotely and add a fileMapping entry for them
             val newlyAddedFilesToLocalFoldersFuture: Future[FileSyncs] = syncAddedFilesToFolders(
                 realFilesExtractor = realFilesExtractor[JFile],
-                // TODO: Generify [2]
-                knownPathsExtractor = folderMapping => GoverdriveDb.getFileMappingsByFolderMappingPkFuture(folderMapping.pk).map(_.map(_.localPath)),
+                correctPathExtractor = _.localPath,
                 fileMappingSyncer = (folderMapping, path) => {
                     //Future[FileMapping]
                     ???
