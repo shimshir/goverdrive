@@ -78,7 +78,7 @@ object GoverdriveDb {
     }
 
     def updateFileMappingFuture(fileMapping: FileMapping): Future[Option[FileMapping]] = {
-        val updateAction = fileMappings.filter(_.pk === fileMapping.pk) update fileMapping
+        val updateAction = fileMappings insertOrUpdate  fileMapping
         db.run(updateAction).map {
             case 0 => None
             case _ => Some(fileMapping)

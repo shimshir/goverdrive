@@ -171,7 +171,7 @@ public class GoverdriveServiceImpl implements GoverdriveService {
                     final File stupidJavaFinalCurrentParent = currentParent;
                     List<File> files = allFilesAndFolders
                         .stream()
-                        .filter(file -> fileName.equals(file.getName()) && stupidJavaFinalCurrentParent.getId().equals(file.getParents().get(0)))
+                        .filter(file -> fileName.equals(file.getName()) && file.getParents().contains(stupidJavaFinalCurrentParent.getId()))
                         .collect(Collectors.toList());
                     if (files.size() == 0)
                         return Xor.left(new DriveError(String.format("Folder: %s not found in path: %s", fileName, remotePath), DriveErrorType.FOLDER_NOT_FOUND));

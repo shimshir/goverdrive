@@ -83,7 +83,11 @@ package object implicits extends LazyLogging {
             override def path(file: JFile): String = file.getAbsolutePath
 
             override def folder(folderMapping: FolderMapping): CoreFeedback Either JFile = {
-                ???
+                val jFile = new JFile(folderMapping.localPath)
+                if (jFile.canRead)
+                    Right(jFile)
+                else
+                    Left(CoreFeedback(s"Could not read local folder: ${folderMapping.localPath}"))
             }
 
             override def origin: String = "local"

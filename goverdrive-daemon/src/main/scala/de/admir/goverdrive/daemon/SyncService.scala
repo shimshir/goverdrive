@@ -94,7 +94,7 @@ object SyncService extends StrictLogging {
 
     def syncAddedFilesToFolders[F](realFilesExtractor: FolderMapping => Seq[DaemonFeedback Either F],
                                    correctPathExtractor: FileMapping => String,
-                                   fileMappingSyncer: (FolderMapping, String) => Future[FileMapping])
+                                   fileMappingSyncer: (FolderMapping, String) => Future[FileSync])
                                   (implicit ev: FileLike[F]): Future[FileSyncs] = {
         GoverdriveDb.getFolderMappingsFuture flatMap { folderMappings =>
             val realFilesInsideFolders: Map[FolderMapping, Seq[DaemonFeedback Either F]] = folderMappings.map(foMapp => (foMapp, realFilesExtractor(foMapp))).toMap
@@ -130,7 +130,7 @@ object SyncService extends StrictLogging {
                     newPathPairs flatMap {
                         case (folderMapping, newPathEithers) => newPathEithers.map {
                             case Left(daemonFeedback) => Future.successful(Left(daemonFeedback))
-                            case Right(newPath) => fileMappingSyncer(folderMapping, newPath).map(Right(_))
+                            case Right(newPath) => fileMappingSyncer(folderMapping, newPath)
                         }
                     }
                 }
@@ -219,23 +219,38 @@ object SyncService extends StrictLogging {
                     }
             )
 
-            // TODO: Check for files inside folderMappings that were added locally and add a fileMapping entry for them
+            // TODO: Handle files that were deleted both locally and remotely (just remove the fileMappings)
+
+            /**
+              * Check for files inside folderMappings that were added locally and add a fileMapping entry for them
+              */
             val newlyAddedFilesToRemoteFoldersFuture: Future[FileSyncs] = syncAddedFilesToFolders(
                 realFilesExtractor = realFilesExtractor[GFile],
                 correctPathExtractor = _.remotePath,
                 fileMappingSyncer = (folderMapping, path) => {
-                    //Future[FileMapping]
-                    ???
+                    val fileMapping = FileMapping(
+                        localPath = path.replace(folderMapping.remotePath, folderMapping.localPath),
+                        remotePath = path,
+                        folderMappingPk = folderMapping.pk
+                    )
+                    syncRemoteToLocalFuture(Seq(fileMapping)).map(_.head)
                 }
             )
 
-            // TODO: Check if files inside folderMappings were added remotely and add a fileMapping entry for them
+
+            /**
+              * Check if files inside folderMappings were added remotely and add a fileMapping entry for them
+              */
             val newlyAddedFilesToLocalFoldersFuture: Future[FileSyncs] = syncAddedFilesToFolders(
                 realFilesExtractor = realFilesExtractor[JFile],
                 correctPathExtractor = _.localPath,
                 fileMappingSyncer = (folderMapping, path) => {
-                    //Future[FileMapping]
-                    ???
+                    val fileMapping = FileMapping(
+                        localPath = path,
+                        remotePath = path.replace(folderMapping.localPath, folderMapping.remotePath),
+                        folderMappingPk = folderMapping.pk
+                    )
+                    syncLocalToRemoteFuture(Seq(fileMapping)).map(_.head)
                 }
             )
 
@@ -255,14 +270,16 @@ object SyncService extends StrictLogging {
                 deletedSyncedRemoteFolderMappings <- deletedSyncedRemoteFolderMappingsFuture
                 syncedToRemoteFiles <- syncedToRemoteFilesFuture
                 syncedToLocalFiles <- syncedToLocalFilesFuture
+                newlyAddedFilesToLocalFolders <- newlyAddedFilesToLocalFoldersFuture
+                newlyAddedFilesToRemoteFolders <- newlyAddedFilesToRemoteFoldersFuture
 
             } yield SyncResult(
                 deletedLocalFiles,
                 deletedRemoteFiles,
                 deletedSyncedLocalFolderMappings,
                 deletedSyncedRemoteFolderMappings,
-                syncedToRemoteFiles,
-                syncedToLocalFiles
+                syncedToRemoteFiles ++ newlyAddedFilesToLocalFolders,
+                syncedToLocalFiles ++ newlyAddedFilesToRemoteFolders
             )
         })
     }
