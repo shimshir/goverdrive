@@ -5,6 +5,7 @@ import com.google.api.services.drive.model.{File => GFile}
 import com.typesafe.scalalogging.LazyLogging
 import de.admir.goverdrive.java.core.util.SystemUtils
 import de.admir.goverdrive.scala.core.feedback.CoreFeedback
+import de.admir.goverdrive.scala.core.model.FolderMapping
 import de.admir.goverdrive.scala.core.{GoverdriveServiceWrapper => GoverdriveService}
 
 import scala.util.{Failure, Success, Try}
@@ -12,7 +13,8 @@ import scala.util.{Failure, Success, Try}
 
 package object implicits extends LazyLogging {
 
-    private implicit class GFileImprovements(val file: GFile) {
+    // TODO: Make private
+    implicit class GFileImprovements(val file: GFile) {
         def isDirectory: Boolean = file.getMimeType == "application/vnd.google-apps.folder"
 
         def getAbsolutePath: String = {
@@ -51,39 +53,68 @@ package object implicits extends LazyLogging {
     }
 
     trait FileLike[T] {
-        def fileTree(file: T): CoreFeedback Either Seq[T]
+        def fileTree(file: T, onlyFiles: Boolean = false): Seq[CoreFeedback Either T]
 
         def path(file: T): String
+
+        def folder(folderMapping: FolderMapping): CoreFeedback Either T
+
+        def origin: String
     }
 
     object FileLike {
 
         implicit object FileLikeJFile extends FileLike[JFile] {
-            override def fileTree(file: JFile): CoreFeedback Either Seq[JFile] = {
-                def innerFileTree(file: JFile): Seq[JFile] =
-                    file :: (if (file.isDirectory) file.listFiles().toList.flatMap(innerFileTree) else Nil)
-
-                Try(innerFileTree(file)) match {
-                    case Failure(t) => Left(CoreFeedback(t))
-                    case Success(files) => Right(files)
+            override def fileTree(file: JFile, onlyFiles: Boolean = false): Seq[CoreFeedback Either JFile] = {
+                def innerFileTree(file: JFile): Seq[CoreFeedback Either JFile] = {
+                    val tl = Try(if (file.isDirectory) file.listFiles().toList.flatMap(innerFileTree) else Nil) match {
+                        case Failure(t) => Seq(Left(CoreFeedback(t)))
+                        case Success(childFiles) => childFiles
+                    }
+                    if (file.isDirectory && onlyFiles)
+                        tl
+                    else
+                        Right(file) +: tl
                 }
+
+                innerFileTree(file)
             }
 
             override def path(file: JFile): String = file.getAbsolutePath
+
+            override def folder(folderMapping: FolderMapping): CoreFeedback Either JFile = {
+                ???
+            }
+
+            override def origin: String = "local"
         }
 
         implicit object FileLikeGFile extends FileLike[GFile] {
-            override def fileTree(file: GFile): CoreFeedback Either Seq[GFile] = {
-                def innerFileTree(file: GFile): Seq[GFile] =
-                    file :: (if (file.isDirectory) file.listFiles().toList.flatMap(innerFileTree) else Nil)
-
-                Try(innerFileTree(file)) match {
-                    case Failure(t) => Left(CoreFeedback(t))
-                    case Success(files) => Right(files)
+            override def fileTree(file: GFile, onlyFiles: Boolean = false): Seq[CoreFeedback Either GFile] = {
+                def innerFileTree(file: GFile): Seq[CoreFeedback Either GFile] = {
+                    val tl = Try(if (file.isDirectory) file.listFiles().toList.flatMap(innerFileTree) else Nil) match {
+                        case Failure(t) => Seq(Left(CoreFeedback(t)))
+                        case Success(childFiles) => childFiles
+                    }
+                    if (file.isDirectory && onlyFiles)
+                        tl
+                    else
+                        Right(file) +: tl
                 }
+
+                innerFileTree(file)
             }
 
             override def path(file: GFile): String = file.getAbsolutePath
+
+            override def folder(folderMapping: FolderMapping): CoreFeedback Either GFile = {
+                GoverdriveService.getFile(folderMapping.remotePath) match {
+                    case Left(driveError) => Left(CoreFeedback(s"Error while retrieving remote folder: ${folderMapping.remotePath}", driveError))
+                    case Right(file) => Right(file)
+                }
+            }
+
+            override def origin: String = "remote"
         }
 
     }

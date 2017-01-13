@@ -15,9 +15,10 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.util.{Failure, Left, Right, Success, Try}
 import de.admir.goverdrive.scala.core.MappingUtils._
-import java.io.{File => JFile}
 import com.google.api.services.drive.model.{File => GFile}
+import java.io.{File => JFile}
 import de.admir.goverdrive.scala.core.util.implicits.FileLike
+import de.admir.goverdrive.scala.core.util.implicits.FileLike._
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
@@ -91,69 +92,60 @@ object SyncService extends StrictLogging {
         }
     }
 
-    def syncAddedFilesToFolders[F](realFilesExtractor: FolderMapping => DaemonFeedback Either Seq[F],
+    def syncAddedFilesToFolders[F](realFilesExtractor: FolderMapping => Seq[DaemonFeedback Either F],
                                    knownPathsExtractor: FolderMapping => Future[Seq[String]],
-                                   fileMappingWriter: (FolderMapping, String) => Future[FileMapping])
+                                   fileMappingSyncer: (FolderMapping, String) => Future[FileMapping])
                                   (implicit ev: FileLike[F]): Future[FileSyncs] = {
         GoverdriveDb.getFolderMappingsFuture flatMap { folderMappings =>
-            val realFilesInsideFolders: Map[FolderMapping, Either[DaemonFeedback, Seq[F]]] = folderMappings.map(fiMapp => (fiMapp, realFilesExtractor(fiMapp))).toMap
+            val realFilesInsideFolders: Map[FolderMapping, Seq[DaemonFeedback Either F]] = folderMappings.map(foMapp => (foMapp, realFilesExtractor(foMapp))).toMap
 
-            val realPathsInsideFoldersMap: Map[FolderMapping, DaemonFeedback Either Set[String]] = realFilesInsideFolders map { case (foMapp, filesEither) =>
+            val realPathsInsideFoldersMap: Map[FolderMapping, Seq[DaemonFeedback Either String]] = realFilesInsideFolders map { case (foMapp, fileEithers) =>
                 (
                     foMapp,
-                    filesEither match {
+                    fileEithers map {
                         case Left(daemonFeedback) => Left(daemonFeedback)
-                        case Right(fileLikes) => Right(fileLikes.map(ev.path).toSet)
+                        case Right(fileLike) => Right(ev.path(fileLike))
                     }
                 )
             }
 
-            val knownPathsInsideFoldersMap: Map[FolderMapping, Future[Set[String]]] = folderMappings.map(fiMapp => (fiMapp, knownPathsExtractor(fiMapp).map(_.toSet))).toMap
+            val knownPathsInsideFoldersMapFuture: Future[Map[FolderMapping, Seq[DaemonFeedback Either String]]] =
+                Future.sequence {
+                    folderMappings map { foMapp =>
+                        knownPathsExtractor(foMapp).map(knownPaths => (foMapp, knownPaths.map(Right(_))))
+                    }
+                }.map(_.toMap)
 
-            val newPathsMap: Map[FolderMapping, DaemonFeedback Either Future[Set[String]]] =
-                realPathsInsideFoldersMap.keys.map(foM =>
-                    (
-                        foM,
-                        realPathsInsideFoldersMap(foM) match {
-                            case Left(daemonFeedback) => Left(daemonFeedback)
-                            case Right(realPaths) =>
-                                Right(knownPathsInsideFoldersMap(foM).map(knownPaths => realPaths -- knownPaths))
+            val newPathsMapFuture: Future[Map[FolderMapping, Set[DaemonFeedback Either String]]] =
+                knownPathsInsideFoldersMapFuture.map(knownPathsInsideFoldersMap =>
+                    realPathsInsideFoldersMap.keys.map(foMapp =>
+                        (foMapp, realPathsInsideFoldersMap(foMapp).toSet -- knownPathsInsideFoldersMap(foMapp).toSet)
+                    ).toMap
+                )
+
+            val syncedFileMappings = newPathsMapFuture.map(_.toSeq) flatMap { newPathPairs =>
+                Future.sequence {
+                    newPathPairs flatMap {
+                        case (folderMapping, newPathEithers) => newPathEithers.map {
+                            case Left(daemonFeedback) => Future.successful(Left(daemonFeedback))
+                            case Right(newPath) => fileMappingSyncer(folderMapping, newPath).map(Right(_))
                         }
-                    )
-                ).toMap
-
-            // TODO: Finish this
-            val ert: Future[Seq[DaemonFeedback Either Set[FileMapping]]] = Future.sequence {
-                newPathsMap.toSeq map {
-                    case (_, Left(daemonFeedback)) =>
-                        Future.successful(Left(daemonFeedback))
-                    case (folderMapping: FolderMapping, Right(newPathsFuture: Future[Set[String]])) => {
-                        newPathsFuture.flatMap(newPaths =>
-                            Future.sequence {
-                                newPaths.map(newPath => fileMappingWriter(folderMapping, newPath))
-                            }
-                        ).map(Right(_))
                     }
                 }
             }
-            ert map {_.map {
-                    case Left(daemonFeedback) => Left(daemonFeedback)
-                    case Right(fileMappings) => Right(fileMappings)
-                }
-            }
-            ???
+            syncedFileMappings
         }
     }
 
-    def realRemoteFilesExtractor[F](folderMapping: FolderMapping)(implicit ev: FileLike[F]): DaemonFeedback Either Seq[F] = {
-        GoverdriveService.getFile(folderMapping.remotePath) match {
+    def realFilesExtractor[F](folderMapping: FolderMapping)(implicit ev: FileLike[F]): Seq[DaemonFeedback Either F] = {
+        ev.folder(folderMapping) match {
             case Left(driveError) =>
-                Left(DaemonFeedback(s"Error while getting remote folder: ${folderMapping.remotePath}", driveError))
-            case Right(folder: F) =>
-                ev.fileTree(folder) match {
+                Seq(Left(DaemonFeedback(s"Error while getting ${ev.origin} folder: ${folderMapping.remotePath}", driveError)))
+            case Right(folder) =>
+                ev.fileTree(folder, onlyFiles = true) map {
                     case Left(coreFeedback) =>
-                        Left(DaemonFeedback(s"Error while reading fileTree for remote folder: $folder", coreFeedback))
-                    case Right(fileLikes) => Right(fileLikes)
+                        Left(DaemonFeedback(s"Error while reading fileTree for ${ev.origin} folder: $folder", coreFeedback))
+                    case Right(fileLike) => Right(fileLike)
                 }
         }
     }
@@ -227,13 +219,25 @@ object SyncService extends StrictLogging {
 
             // TODO: Check for files inside folderMappings that were added locally and add a fileMapping entry for them
             val newlyAddedFilesToRemoteFoldersFuture: Future[FileSyncs] = syncAddedFilesToFolders(
-                realFilesExtractor = realRemoteFilesExtractor[GFile],
-                knownPathsExtractor = ???,
-                fileMappingWriter = ???
+                realFilesExtractor = realFilesExtractor[GFile],
+                // TODO: Generify [2]
+                knownPathsExtractor = folderMapping => GoverdriveDb.getFileMappingsByFolderMappingPkFuture(folderMapping.pk).map(_.map(_.remotePath)),
+                fileMappingSyncer = (folderMapping, path) => {
+                    //Future[FileMapping]
+                    ???
+                }
             )
 
             // TODO: Check if files inside folderMappings were added remotely and add a fileMapping entry for them
-            val newlyAddedFilesToLocalFoldersFuture: Future[FileSyncs] = syncAddedFilesToFolders()
+            val newlyAddedFilesToLocalFoldersFuture: Future[FileSyncs] = syncAddedFilesToFolders(
+                realFilesExtractor = realFilesExtractor[JFile],
+                // TODO: Generify [2]
+                knownPathsExtractor = folderMapping => GoverdriveDb.getFileMappingsByFolderMappingPkFuture(folderMapping.pk).map(_.map(_.localPath)),
+                fileMappingSyncer = (folderMapping, path) => {
+                    //Future[FileMapping]
+                    ???
+                }
+            )
 
             val syncedToRemoteFilesFuture: Future[FileSyncs] = syncLocalToRemoteFuture(filterLocalToRemoteSyncables(fileMappings))
 
