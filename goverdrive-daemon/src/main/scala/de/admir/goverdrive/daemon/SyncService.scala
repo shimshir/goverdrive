@@ -17,8 +17,8 @@ import scala.util.{Failure, Left, Right, Success, Try}
 import de.admir.goverdrive.scala.core.MappingUtils._
 import com.google.api.services.drive.model.{File => GFile}
 import java.io.{File => JFile}
-import de.admir.goverdrive.scala.core.util.implicits.FileLike
-import de.admir.goverdrive.scala.core.util.implicits.FileLike._
+import de.admir.goverdrive.scala.core.implicits.FileLike._
+import de.admir.goverdrive.scala.core.typeclasses.FileLike
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
@@ -213,8 +213,8 @@ object SyncService extends StrictLogging {
                             val errorMsg = s"Error while locally deleting folder, folderMapping: $folderMapping"
                             logger.error(errorMsg, t)
                             Left(DaemonFeedback(errorMsg, t))
-                        // TODO: Should be handled in some way, at least log on unexpected return
                         case Success((deletedCount, remainingCount)) =>
+                            logger.info(s"Deleted $deletedCount from ${folderMapping.localPath}, remaining : $remainingCount")
                             Right(folderMapping)
                     }
             )
