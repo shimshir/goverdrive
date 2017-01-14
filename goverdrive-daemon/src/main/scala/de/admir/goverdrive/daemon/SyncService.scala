@@ -312,22 +312,22 @@ object SyncService extends StrictLogging {
             case None => Future.successful(None)
         }
 
-        val fileMappingUpdateFuture: Future[Option[FileMapping]] = GoverdriveDb.updateFileMappingFuture(fileMapping.copy(fileId = Some(driveFileId), syncedAt = Some(timestamp)))
+        val fileMappingUpdateFuture: Future[FileMapping] = GoverdriveDb.upsertFileMappingFuture(fileMapping.copy(fileId = Some(driveFileId), syncedAt = Some(timestamp)))
 
-        val updatesResultFuture: Future[(Option[Option[FolderMapping]], Option[FileMapping])] = for {
+        val updatesResultFuture: Future[(Option[Option[FolderMapping]], FileMapping)] = for {
             folderMappingUpdate <- folderMappingUpdateFuture
             fileMappingUpdate <- fileMappingUpdateFuture
         } yield (folderMappingUpdate, fileMappingUpdate)
 
         updatesResultFuture.map {
-            case (None, Some(updatedFileMapping)) =>
+            case (None, updatedFileMapping) =>
                 logger.info(s"Successfully synced and updated fileMapping: $updatedFileMapping")
                 Right(updatedFileMapping)
-            case (Some(None), Some(updatedFileMapping)) =>
+            case (Some(None), updatedFileMapping) =>
                 logger.info(s"Successfully synced and updated fileMapping: $updatedFileMapping")
                 logger.warn(s"Could not find folderMapping entry for fileMapping: $fileMapping")
                 Right(updatedFileMapping)
-            case (Some(Some(updatedFolderMapping)), Some(updatedFileMapping)) =>
+            case (Some(Some(updatedFolderMapping)), updatedFileMapping) =>
                 logger.info(s"Successfully synced and updated fileMapping: $updatedFileMapping and updated folderMapping: $updatedFolderMapping")
                 Right(updatedFileMapping)
             case _ =>
@@ -353,7 +353,7 @@ object SyncService extends StrictLogging {
 
     def syncRemoteToLocalFuture(fileMappings: Seq[FileMapping]): Future[FileSyncs] = {
         Future.sequence {
-            fileMappings.map(fileMapping => {
+            fileMappings map { fileMapping =>
                 GoverdriveService.getFile(fileMapping.remotePath) match {
                     case Left(error) =>
                         Future.successful(Left(DaemonFeedback(s"Could not find remote file: ${fileMapping.remotePath}", error)))
@@ -386,7 +386,7 @@ object SyncService extends StrictLogging {
                                 }
                         }
                 }
-            })
+            }
         }
     }
 }

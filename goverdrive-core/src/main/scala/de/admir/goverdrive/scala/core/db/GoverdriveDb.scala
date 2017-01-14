@@ -77,11 +77,11 @@ object GoverdriveDb {
         Await.result(getFileMappingsByFolderMappingPkFuture(pk), timeout)
     }
 
-    def updateFileMappingFuture(fileMapping: FileMapping): Future[Option[FileMapping]] = {
-        val updateAction = fileMappings insertOrUpdate  fileMapping
-        db.run(updateAction).map {
-            case 0 => None
-            case _ => Some(fileMapping)
+    def upsertFileMappingFuture(fileMapping: FileMapping): Future[FileMapping] = {
+        val updateAction = (fileMappings returning fileMappings.map(_.pk)) insertOrUpdate fileMapping
+        db.run(updateAction) map {
+            case None => fileMapping
+            case Some(pk) => fileMapping.copy(pk = pk)
         }
     }
 
