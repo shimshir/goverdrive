@@ -22,7 +22,7 @@ object GoverdriveDb {
     private val dbFolder = new File(CoreConfig.getDbFolder)
     private val db = Database.forConfig("goverdrive.db")
 
-    case class FolderMappings(tag: Tag) extends Table[FolderMapping](tag, "LOCAL_FOLDERS") {
+    case class FolderMappings(tag: Tag) extends Table[FolderMapping](tag, "FOLDER_MAPPING") {
         def pk = column[Option[Int]]("PK", O.PrimaryKey, O.AutoInc)
         def localPath = column[String]("LOCAL_PATH")
         def remotePath = column[String]("REMOTE_PATH")
